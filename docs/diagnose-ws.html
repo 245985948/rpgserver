@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket 诊断工具</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 900px; margin: 20px auto; padding: 20px; background: #f5f5f5; }
+        .container { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1 { color: #333; border-bottom: 2px solid #007bff; padding-bottom: 10px; }
+        .section { margin: 20px 0; padding: 15px; background: #f8f9fa; border-radius: 4px; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 4px; font-weight: bold; }
+        .status.success { background: #d4edda; color: #155724; }
+        .status.error { background: #f8d7da; color: #721c24; }
+        .status.warning { background: #fff3cd; color: #856404; }
+        .status.info { background: #d1ecf1; color: #0c5460; }
+        button { padding: 10px 20px; margin: 5px; border: none; border-radius: 4px; cursor: pointer; }
+        button.primary { background: #007bff; color: white; }
+        button.success { background: #28a745; color: white; }
+        button.danger { background: #dc3545; color: white; }
+        button:disabled { background: #6c757d; cursor: not-allowed; }
+        #log { background: #212529; color: #fff; padding: 15px; border-radius: 4px; height: 400px; overflow-y: auto; font-family: monospace; font-size: 13px; white-space: pre-wrap; }
+        .log-entry { margin: 2px 0; }
+        .log-entry.sent { color: #7ee787; }
+        .log-entry.received { color: #79c0ff; }
+        .log-entry.error { color: #ffa198; }
+        .log-entry.info { color: #d2a8ff; }
+        input[type="text"] { width: 100%; padding: 8px; margin: 5px 0; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 WebSocket 诊断工具</h1>
+
+        <div class="section">
+            <h3>配置</h3>
+            <label>服务器地址:</label>
+            <input type="text" id="serverHost" value="localhost:3000">
+            <label>Token (可选):</label>
+            <input type="text" id="token" value="" placeholder="没有 Token 将匿名连接">
+        </div>
+
+        <div class="section">
+            <h3>连接测试</h3>
+            <div class="grid">
+                <button class="success" onclick="testNamespace('/test')">测试 /test (免认证)</button>
+                <button class="primary" onclick="testNamespace('/game')">测试 /game (需认证)</button>
+            </div>
+            <button class="danger" onclick="disconnectAll()">断开所有连接</button>
+        </div>
+
+        <div class="section">
+            <h3>状态</h3>
+            <div id="status">
+                <div class="status info">未开始测试</div>
+            </div>
+        </div>
+
+        <div id="log"></div>
+
+        <div class="section">
+            <h3>常见问题</h3>
+            <ul>
+                <li><strong>/test 能连，/game 不能：</strong> game 需要有效 JWT Token</li>
+                <li><strong>都连不上：</strong> 检查服务器是否运行，端口是否正确</li>
+                <li><strong>连接后立即断开：</strong> Token 无效或过期</li>
+                <li><strong>CORS 错误：</strong> 使用 Socket.IO 客户端，不要直接用 WebSocket</li>
+            </ul>
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script>
+        const sockets = {};
+        const logEl = document.getElementById('log');
+        const statusEl = document.getElementById('status');
+
+        function log(message, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logEl.appendChild(entry);
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function setStatus(message, type) {
+            statusEl.innerHTML = `<div class="status ${type}">${message}</div>`;
+        }
+
+        function getServerUrl() {
+            return document.getElementById('serverHost').value;
+        }
+
+        function getToken() {
+            return document.getElementById('token').value.trim();
+        }
+
+        async function testNamespace(namespace) {
+            const serverUrl = getServerUrl();
+            const token = getToken();
+            const url = `ws://${serverUrl}${namespace}`;
+
+            log(`\n========== 测试 ${namespace} ==========`, 'info');
+            log(`连接地址: ${url}`, 'info');
+            log(`Token: ${token ? '已提供' : '未提供'}`, 'info');
+
+            setStatus(`正在连接 ${namespace}...`, 'info');
+
+            // 如果已有连接，先断开
+            if (sockets[namespace]) {
+                sockets[namespace].disconnect();
+                delete sockets[namespace];
+            }
+
+            const startTime = Date.now();
+
+            try {
+                const socket = io(`ws://${serverUrl}`, {
+                    path: '/socket.io',
+                    transports: ['websocket', 'polling'],
+                    query: token ? { token } : {},
+                    reconnection: false,
+                    timeout: 10000,
+                });
+
+                sockets[namespace] = socket;
+
+                socket.on('connect', () => {
+                    const duration = Date.now() - startTime;
+                    log(`✅ 连接成功! ID: ${socket.id}, 耗时: ${duration}ms`, 'received');
+                    setStatus(`${namespace} 连接成功`, 'success');
+
+                    // 发送测试消息
+                    setTimeout(() => {
+                        if (namespace === '/test') {
+                            socket.emit('ping', { test: true, time: Date.now() });
+                            log(`📤 发送 ping 测试`, 'sent');
+                        } else if (namespace === '/game') {
+                            socket.emit('message', { code: 0, seq: 1, payload: {}, timestamp: Date.now() });
+                            log(`📤 发送心跳测试 (code: 0)`, 'sent');
+                        }
+                    }, 500);
+                });
+
+                socket.on('connect_error', (error) => {
+                    log(`❌ 连接错误: ${error.message}`, 'error');
+                    if (error.data) {
+                        log(`错误详情: ${JSON.stringify(error.data)}`, 'error');
+                    }
+                    setStatus(`${namespace} 连接失败: ${error.message}`, 'error');
+                });
+
+                socket.on('disconnect', (reason) => {
+                    log(`⚠️ 连接断开: ${reason}`, 'error');
+                    if (reason === 'io server disconnect') {
+                        log('服务器主动断开连接 (可能是认证失败)', 'error');
+                    }
+                    setStatus(`${namespace} 已断开`, 'warning');
+                });
+
+                // /test 特有事件
+                if (namespace === '/test') {
+                    socket.on('welcome', (data) => {
+                        log(`👋 收到欢迎: ${JSON.stringify(data)}`, 'received');
+                    });
+                    socket.on('pong', (data) => {
+                        log(`🏓 收到 Pong: ${JSON.stringify(data)}`, 'received');
+                    });
+                }
+
+                // /game 特有事件
+                if (namespace === '/game') {
+                    socket.on('connected', (data) => {
+                        log(`👋 连接确认: ${JSON.stringify(data)}`, 'received');
+                    });
+                    socket.on('message', (data) => {
+                        log(`📨 收到消息: ${JSON.stringify(data)}`, 'received');
+                    });
+                }
+
+                // 通用错误处理
+                socket.on('error', (error) => {
+                    log(`❌ Socket 错误: ${JSON.stringify(error)}`, 'error');
+                });
+
+            } catch (error) {
+                log(`❌ 异常: ${error.message}`, 'error');
+                setStatus(`测试失败: ${error.message}`, 'error');
+            }
+        }
+
+        function disconnectAll() {
+            Object.keys(sockets).forEach(namespace => {
+                if (sockets[namespace]) {
+                    sockets[namespace].disconnect();
+                    log(`断开 ${namespace}`, 'info');
+                }
+            });
+            setStatus('所有连接已断开', 'info');
+        }
+
+        // 初始日志
+        log('诊断工具已加载', 'info');
+        log('Socket.IO 版本: ' + io.version, 'info');
+        log('点击按钮开始测试\n', 'info');
+    </script>
+</body>
+</html>

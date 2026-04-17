@@ -1,0 +1,284 @@
+syntax = "proto3";
+
+package taixu;
+
+option optimize_for = SPEED;
+
+// ============================================
+// 基础类型
+// ============================================
+
+// 通用的空响应
+message Empty {
+}
+
+// 通用的错误信息
+message ErrorInfo {
+  int32 code = 1;
+  string message = 2;
+  string detail = 3;
+}
+
+// ============================================
+// 请求/响应包装
+// ============================================
+
+// 统一的请求包装
+message GameRequest {
+  int32 seq = 1;                    // 序列号，用于请求-响应匹配
+  string route = 2;                 // 路由/事件名
+  bytes payload = 3;                // 序列化后的业务数据
+  int64 timestamp = 4;              // 客户端时间戳
+  string token = 5;                 // 可选的认证令牌
+}
+
+// 统一的响应包装
+message GameResponse {
+  int32 seq = 1;                    // 序列号，匹配请求
+  string route = 2;                 // 路由/事件名
+  bool success = 3;                 // 是否成功
+  bytes payload = 4;                // 序列化后的响应数据
+  ErrorInfo error = 5;              // 错误信息
+  int64 timestamp = 6;              // 服务器时间戳
+  int32 processing_time = 7;        // 处理耗时(ms)
+}
+
+// WebSocket 消息包装
+message WebSocketMessage {
+  string event = 1;                 // 事件名
+  bytes payload = 2;                // 序列化后的数据
+  int64 timestamp = 3;              // 时间戳
+  int32 seq = 4;                    // 序列号
+  string target_player = 5;         // 目标玩家ID (可选)
+}
+
+// ============================================
+// 玩家数据
+// ============================================
+
+message PlayerBasicInfo {
+  string id = 1;
+  string nickname = 2;
+  string avatar = 3;
+  int32 level = 4;
+  int64 exp = 5;
+  string realm = 6;                 // 境界
+  int32 vip_level = 7;
+  int32 fighting_power = 8;         // 战力
+}
+
+message PlayerCurrency {
+  int64 spirit_stones = 1;          // 灵石
+  int64 contribution = 2;           // 贡献点
+  int64 prestige = 3;               // 声望
+  int64 immortal_jade = 4;          // 仙玉
+}
+
+message PlayerAttributes {
+  int32 hp = 1;
+  int32 max_hp = 2;
+  int32 mp = 3;
+  int32 max_mp = 4;
+  int32 attack = 5;
+  int32 defense = 6;
+  int32 speed = 7;
+  int32 crit_rate = 8;              // 暴击率
+  int32 crit_damage = 9;            // 暴击伤害
+  int32 resistance = 10;            // 抗性
+}
+
+// 完整的玩家数据 (用于同步)
+message PlayerData {
+  PlayerBasicInfo basic = 1;
+  PlayerCurrency currency = 2;
+  PlayerAttributes attributes = 3;
+  repeated string skills = 4;       // 技能ID列表
+  repeated Equipment equipments = 5;
+  repeated Item items = 6;
+  int64 last_update = 7;
+}
+
+// ============================================
+// 物品系统
+// ============================================
+
+message Item {
+  string id = 1;
+  string item_id = 2;               // 配置表ID
+  string name = 3;
+  int32 quantity = 4;
+  int32 quality = 5;                // 品质
+  int64 expire_time = 6;            // 过期时间 (0=永久)
+}
+
+message Equipment {
+  string id = 1;
+  string equip_id = 2;              // 配置表ID
+  string name = 3;
+  int32 level = 4;
+  int32 star = 5;                   // 星级
+  int32 quality = 6;                // 品质
+  repeated AttributeBonus bonuses = 7;
+}
+
+message AttributeBonus {
+  string attr_type = 1;
+  int32 value = 2;
+  bool is_percentage = 3;
+}
+
+// ============================================
+// 战斗系统
+// ============================================
+
+message BattleUnit {
+  string id = 1;
+  string name = 2;
+  int32 level = 3;
+  int32 hp = 4;
+  int32 max_hp = 5;
+  int32 mp = 6;
+  int32 max_mp = 7;
+  bool is_player = 8;
+  string avatar = 9;
+}
+
+message BattleAction {
+  string actor_id = 1;
+  string target_id = 2;
+  string action_type = 3;           // attack, skill, item, escape
+  string skill_id = 4;
+  int32 damage = 5;
+  bool is_crit = 6;
+  int32 heal = 7;
+  repeated BattleEffect effects = 8;
+}
+
+message BattleEffect {
+  string effect_type = 1;           // buff, debuff, stun, etc.
+  int32 duration = 2;
+  int32 value = 3;
+}
+
+message BattleState {
+  string battle_id = 1;
+  repeated BattleUnit units = 2;
+  int32 round = 3;
+  string current_turn = 4;          // 当前行动单位
+  bool is_finished = 5;
+  string winner = 6;
+}
+
+// ============================================
+// 经济系统
+// ============================================
+
+message MarketListing {
+  string id = 1;
+  string seller_id = 2;
+  string item_id = 3;
+  string item_name = 4;
+  int32 quantity = 5;
+  int64 price = 6;
+  int64 list_time = 7;
+  int64 expire_time = 8;
+}
+
+message AuctionItem {
+  string id = 1;
+  string item_id = 2;
+  string item_name = 3;
+  int32 quality = 4;
+  int64 start_price = 5;
+  int64 current_bid = 6;
+  string highest_bidder = 7;
+  int64 end_time = 8;
+  repeated BidRecord bid_history = 9;
+}
+
+message BidRecord {
+  string bidder_id = 1;
+  int64 bid = 2;
+  int64 time = 3;
+}
+
+// ============================================
+// 仙府系统
+// ============================================
+
+message EstateBuilding {
+  string id = 1;
+  string building_id = 2;           // 配置表ID
+  string name = 3;
+  int32 level = 4;
+  int64 upgrade_start = 5;          // 升级开始时间
+  int64 upgrade_end = 6;            // 升级完成时间
+  bool is_upgrading = 7;
+  int64 last_collect = 8;           // 上次收获时间
+}
+
+message EstateData {
+  string player_id = 1;
+  int32 estate_level = 2;
+  repeated EstateBuilding buildings = 3;
+  int64 spirit_gathered = 4;        // 积累的灵气
+  int64 last_visitor = 5;           // 上次访客时间
+}
+
+// ============================================
+// 同步相关
+// ============================================
+
+// 属性变更通知
+message AttrChangeNotify {
+  string player_id = 1;
+  repeated AttrChange changes = 2;
+  string reason = 3;
+  int64 timestamp = 4;
+}
+
+message AttrChange {
+  string field = 1;
+  int64 old_value = 2;
+  int64 new_value = 3;
+}
+
+// 货币变更通知
+message CurrencyChangeNotify {
+  string player_id = 1;
+  string currency_type = 2;
+  int64 delta = 3;
+  int64 new_value = 4;
+  string reason = 5;
+  int64 timestamp = 6;
+}
+
+// 物品变更通知
+message InventoryChangeNotify {
+  string player_id = 1;
+  string item_id = 2;
+  string item_name = 3;
+  int32 delta = 4;
+  int32 new_quantity = 5;
+  string reason = 6;
+  int64 timestamp = 7;
+}
+
+// ============================================
+// 登录相关
+// ============================================
+
+message LoginRequest {
+  string code = 1;                  // 微信登录code
+  string device_id = 2;
+  string client_version = 3;
+}
+
+message LoginResponse {
+  string player_id = 1;
+  string access_token = 2;
+  string refresh_token = 3;
+  int32 expires_in = 4;
+  bool is_new_player = 5;
+  PlayerData player_data = 6;
+}

@@ -1,0 +1,14 @@
+{
+  "roadmap": {
+    "objective": "调通和客户端通过proto协议通信，给客户端一个代码模板，客户端用的是cocos开发用的也是ts",
+    "tasks": [
+      {
+        "id": 1,
+        "number": "01",
+        "pinned": false,
+        "status": "pending",
+        "title": "调通和客户端通过proto协议通信，给客户端一个代码模板，客户端用的是cocos开发用的也是ts"
+      }
+    ]
+  }
+}

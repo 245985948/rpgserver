@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>太墟修仙录 - 网络测试</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            padding: 20px;
+        }
+        h1 {
+            color: #00d4ff;
+            margin-bottom: 20px;
+        }
+        .panel {
+            background: #16213e;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #a0a0a0;
+        }
+        input, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #0f3460;
+            border-radius: 4px;
+            background: #0f3460;
+            color: #fff;
+        }
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            background: #e94560;
+            color: #fff;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background: #ff6b6b;
+        }
+        button:disabled {
+            background: #555;
+            cursor: not-allowed;
+        }
+        .log {
+            background: #0f3460;
+            border-radius: 4px;
+            padding: 15px;
+            height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .log-entry {
+            margin-bottom: 5px;
+            padding: 3px 0;
+        }
+        .log-time {
+            color: #888;
+        }
+        .log-success {
+            color: #4ade80;
+        }
+        .log-error {
+            color: #ef4444;
+        }
+        .log-info {
+            color: #60a5fa;
+        }
+        .status {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        .status.connected {
+            background: #4ade80;
+        }
+        .status.disconnected {
+            background: #ef4444;
+        }
+        .status.connecting {
+            background: #fbbf24;
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body>
+    <h1>太墟修仙录 - 网络测试</h1>
+
+    <div class="panel">
+        <h2>连接设置</h2>
+        <div class="form-group">
+            <label>WebSocket 地址:</label>
+            <input type="text" id="serverUrl" value="ws://localhost:3000/game">
+        </div>
+        <div class="form-group">
+            <label>Proto 文件地址:</label>
+            <input type="text" id="protoUrl" value="proto/game.proto">
+        </div>
+        <div class="form-group">
+            <label>协议格式:</label>
+            <select id="protocol">
+                <option value="protobuf">Protobuf (推荐)</option>
+                <option value="json">JSON</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <span id="statusIndicator" class="status disconnected"></span>
+            <span id="statusText">未连接</span>
+        </div>
+        <button id="btnConnect">连接</button>
+        <button id="btnDisconnect" disabled>断开</button>
+    </div>
+
+    <div class="panel">
+        <h2>消息测试</h2>
+        <div class="form-group">
+            <label>消息号:</label>
+            <select id="messageCode">
+                <option value="1001">1001 - 心跳请求</option>
+                <option value="1003">1003 - 时间同步</option>
+                <option value="2001">2001 - 微信登录</option>
+                <option value="3001" selected>3001 - 获取玩家数据</option>
+                <option value="3003">3003 - 更新昵称</option>
+                <option value="3005">3005 - 使用物品</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Payload (JSON):</label>
+            <input type="text" id="payload" value="{}" placeholder='{"key": "value"}'>
+        </div>
+        <button id="btnSend" disabled>发送请求</button>
+        <button id="btnNotify" disabled>发送通知</button>
+    </div>
+
+    <div class="panel">
+        <h2>日志</h2>
+        <div id="log" class="log"></div>
+        <button id="btnClear">清空日志</button>
+    </div>
+
+    <!-- 引入 protobuf.js -->
+    <script src="https://cdn.jsdelivr.net/npm/protobufjs@7.2.5/dist/protobuf.min.js"></script>
+
+    <script type="module">
+        // 导入网络模块 (使用相对路径)
+        import { network, NetworkState } from './network/index.js';
+
+        // DOM 元素
+        const elServerUrl = document.getElementById('serverUrl');
+        const elProtoUrl = document.getElementById('protoUrl');
+        const elProtocol = document.getElementById('protocol');
+        const elStatusIndicator = document.getElementById('statusIndicator');
+        const elStatusText = document.getElementById('statusText');
+        const elMessageCode = document.getElementById('messageCode');
+        const elPayload = document.getElementById('payload');
+        const elLog = document.getElementById('log');
+
+        const btnConnect = document.getElementById('btnConnect');
+        const btnDisconnect = document.getElementById('btnDisconnect');
+        const btnSend = document.getElementById('btnSend');
+        const btnNotify = document.getElementById('btnNotify');
+        const btnClear = document.getElementById('btnClear');
+
+        // 日志函数
+        function log(message, type = 'info') {
+            const time = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.innerHTML = `<span class="log-time">[${time}]</span> ${message}`;
+            elLog.appendChild(entry);
+            elLog.scrollTop = elLog.scrollHeight;
+        }
+
+        // 更新状态
+        function updateStatus(state) {
+            elStatusIndicator.className = 'status';
+            switch (state) {
+                case NetworkState.CONNECTED:
+                    elStatusIndicator.classList.add('connected');
+                    elStatusText.textContent = '已连接';
+                    btnConnect.disabled = true;
+                    btnDisconnect.disabled = false;
+                    btnSend.disabled = false;
+                    btnNotify.disabled = false;
+                    break;
+                case NetworkState.CONNECTING:
+                case NetworkState.RECONNECTING:
+                    elStatusIndicator.classList.add('connecting');
+                    elStatusText.textContent = state === NetworkState.CONNECTING ? '连接中...' : '重连中...';
+                    btnConnect.disabled = true;
+                    break;
+                default:
+                    elStatusIndicator.classList.add('disconnected');
+                    elStatusText.textContent = '未连接';
+                    btnConnect.disabled = false;
+                    btnDisconnect.disabled = true;
+                    btnSend.disabled = true;
+                    btnNotify.disabled = true;
+            }
+        }
+
+        // 设置网络回调
+        network.setOnConnect(() => {
+            log('✓ 已连接到服务器', 'success');
+            updateStatus(NetworkState.CONNECTED);
+        });
+
+        network.setOnDisconnect(() => {
+            log('✗ 连接已断开', 'error');
+            updateStatus(NetworkState.DISCONNECTED);
+        });
+
+        network.setOnError((err) => {
+            log(`✗ 连接错误: ${err}`, 'error');
+        });
+
+        // 连接按钮
+        btnConnect.addEventListener('click', async () => {
+            const serverUrl = elServerUrl.value;
+            const protoUrl = elProtoUrl.value;
+            const useProtobuf = elProtocol.value === 'protobuf';
+
+            log(`正在连接 ${serverUrl}...`);
+            updateStatus(NetworkState.CONNECTING);
+
+            try {
+                if (useProtobuf) {
+                    log('加载 protobuf...');
+                    const loaded = await network.initProtobuf(protoUrl);
+                    log(loaded ? '✓ Protobuf 加载成功' : '✗ Protobuf 加载失败，使用 JSON', loaded ? 'success' : 'error');
+                }
+
+                await network.connect(serverUrl);
+                log('✓ 连接成功', 'success');
+
+            } catch (error) {
+                log(`✗ 连接失败: ${error.message}`, 'error');
+                updateStatus(NetworkState.DISCONNECTED);
+            }
+        });
+
+        // 断开按钮
+        btnDisconnect.addEventListener('click', () => {
+            network.disconnect();
+            log('手动断开连接');
+        });
+
+        // 发送请求按钮
+        btnSend.addEventListener('click', async () => {
+            const code = parseInt(elMessageCode.value);
+            let payload = {};
+            try {
+                payload = JSON.parse(elPayload.value || '{}');
+            } catch (e) {
+                log('✗ Payload JSON 格式错误', 'error');
+                return;
+            }
+
+            log(`发送请求: code=${code}, payload=${JSON.stringify(payload)}`);
+
+            try {
+                const result = await network.request(code, payload);
+                log(`✓ 收到响应: ${JSON.stringify(result, null, 2)}`, 'success');
+            } catch (error) {
+                log(`✗ 请求失败: ${error.message}`, 'error');
+            }
+        });
+
+        // 发送通知按钮
+        btnNotify.addEventListener('click', () => {
+            const code = parseInt(elMessageCode.value);
+            let payload = {};
+            try {
+                payload = JSON.parse(elPayload.value || '{}');
+            } catch (e) {
+                log('✗ Payload JSON 格式错误', 'error');
+                return;
+            }
+
+            network.notify(code, payload);
+            log(`发送通知: code=${code}`);
+        });
+
+        // 清空日志
+        btnClear.addEventListener('click', () => {
+            elLog.innerHTML = '';
+        });
+
+        // 初始状态
+        updateStatus(NetworkState.DISCONNECTED);
+
+        // 监听推送消息
+        network.on(8001, (data) => {
+            log(`[推送] 属性变化: ${JSON.stringify(data)}`, 'info');
+        });
+
+        network.on(8002, (data) => {
+            log(`[推送] 货币变化: ${JSON.stringify(data)}`, 'info');
+        });
+
+        log('页面已加载，点击"连接"按钮开始测试');
+    </script>
+</body>
+</html>

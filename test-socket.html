@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Socket.IO 连接测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 { color: #333; }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .status.connected { background: #d4edda; color: #155724; }
+        .status.disconnected { background: #f8d7da; color: #721c24; }
+        .status.connecting { background: #fff3cd; color: #856404; }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button.connect { background: #28a745; color: white; }
+        button.disconnect { background: #dc3545; color: white; }
+        button.test { background: #007bff; color: white; }
+        button:disabled { background: #6c757d; cursor: not-allowed; }
+        #log {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+            height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+            margin-top: 20px;
+        }
+        .log-entry { margin: 2px 0; padding: 2px 5px; }
+        .log-entry.sent { color: #0066cc; }
+        .log-entry.received { color: #009900; }
+        .log-entry.error { color: #cc0000; background: #ffeeee; }
+        .log-entry.info { color: #666; }
+        input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            margin: 5px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        .config { margin: 10px 0; }
+        .config label { display: block; margin: 5px 0; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔌 Socket.IO 连接测试</h1>
+
+        <div class="config">
+            <label>服务器地址:</label>
+            <input type="text" id="serverUrl" value="http://localhost:3000" placeholder="http://localhost:3000">
+
+            <label>命名空间 (可选):</label>
+            <input type="text" id="namespace" value="/game" placeholder="/game 或留空">
+
+            <label>Token (可选):</label>
+            <input type="text" id="token" value="" placeholder="JWT token">
+        </div>
+
+        <div>
+            <button class="connect" id="connectBtn" onclick="connect()">连接</button>
+            <button class="disconnect" id="disconnectBtn" onclick="disconnect()" disabled>断开</button>
+            <button class="test" id="testBtn" onclick="sendTestMessage()" disabled>发送测试消息 (GET_PLAYER_DATA_REQ)</button>
+        </div>
+
+        <div id="status" class="status disconnected">未连接</div>
+
+        <div id="log"></div>
+
+        <div style="margin-top: 20px; padding: 10px; background: #e9ecef; border-radius: 4px;">
+            <strong>说明:</strong>
+            <ul>
+                <li>确保服务器运行在 localhost:3000</li>
+                <li>点击"连接"按钮测试 WebSocket 连接</li>
+                <li>连接成功后可以发送测试消息</li>
+            </ul>
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script>
+        let socket = null;
+        let seq = 0;
+
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function updateStatus(status, message) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.className = `status ${status}`;
+            statusDiv.textContent = message;
+        }
+
+        function setButtons(connected) {
+            document.getElementById('connectBtn').disabled = connected;
+            document.getElementById('disconnectBtn').disabled = !connected;
+            document.getElementById('testBtn').disabled = !connected;
+        }
+
+        function connect() {
+            const url = document.getElementById('serverUrl').value;
+            const ns = document.getElementById('namespace').value;
+            const token = document.getElementById('token').value;
+
+            updateStatus('connecting', '连接中...');
+            log(`正在连接: ${url}${ns} ...`, 'info');
+
+            try {
+                // 配置 Socket.IO 连接
+                const options = {
+                    transports: ['websocket', 'polling'],
+                    timeout: 10000,
+                    reconnection: false
+                };
+
+                if (token) {
+                    options.query = { token };
+                }
+
+                // 如果有命名空间，使用命名空间连接
+                const connectUrl = ns && ns !== '/' ? `${url}${ns}` : url;
+                log(`Socket.IO 连接 URL: ${connectUrl}`, 'info');
+
+                socket = io(connectUrl, options);
+
+                socket.on('connect', () => {
+                    updateStatus('connected', `已连接 (Socket ID: ${socket.id})`);
+                    log(`✅ 连接成功! Socket ID: ${socket.id}`, 'received');
+                    log(`传输方式: ${socket.io.engine.transport.name}`, 'info');
+                    setButtons(true);
+                });
+
+                socket.on('disconnect', (reason) => {
+                    updateStatus('disconnected', `已断开: ${reason}`);
+                    log(`❌ 连接断开: ${reason}`, 'error');
+                    setButtons(false);
+                });
+
+                socket.on('connect_error', (error) => {
+                    updateStatus('disconnected', `连接错误: ${error.message}`);
+                    log(`❌ 连接错误: ${error.message}`, 'error');
+                    console.error('连接错误详情:', error);
+                });
+
+                // 监听服务器的 connected 事件
+                socket.on('connected', (data) => {
+                    log(`✅ 服务器确认连接: ${JSON.stringify(data)}`, 'received');
+                });
+
+                // 监听消息响应
+                socket.on('message', (data) => {
+                    log(`📥 收到消息响应: ${JSON.stringify(data)}`, 'received');
+                });
+
+            } catch (error) {
+                updateStatus('disconnected', `错误: ${error.message}`);
+                log(`❌ 错误: ${error.message}`, 'error');
+                console.error(error);
+            }
+        }
+
+        function disconnect() {
+            if (socket) {
+                socket.disconnect();
+                socket = null;
+            }
+            updateStatus('disconnected', '已断开');
+            setButtons(false);
+        }
+
+        function sendTestMessage() {
+            if (!socket || !socket.connected) {
+                log('❌ 未连接，无法发送消息', 'error');
+                return;
+            }
+
+            seq++;
+            const message = {
+                code: 2000,  // GET_PLAYER_DATA_REQ
+                seq: seq,
+                payload: {},
+                timestamp: Date.now()
+            };
+
+            log(`📤 发送消息: ${JSON.stringify(message)}`, 'sent');
+            socket.emit('message', message);
+        }
+
+        // 页面加载时记录
+        log('页面已加载，准备连接...', 'info');
+        log('Socket.IO 版本: ' + (io.version || 'unknown'), 'info');
+    </script>
+</body>
+</html>

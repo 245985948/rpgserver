@@ -1,0 +1,125 @@
+{
+  "inviteSkillSelections": {
+    "assistant": [
+      "\\\\?\\D:\\rpgServers\\.golutra\\skills\\project-development-quality-maintainability"
+    ],
+    "member": [
+      "D:\\rpgServers\\.golutra\\skills\\project-development-quality-maintainability"
+    ]
+  },
+  "memberSequence": {
+    "claude-assistant-rpgservers": 2,
+    "rpgservers-assistant-claude": 3,
+    "rpgservers-member-claude": 6
+  },
+  "members": [
+    {
+      "autoStartTerminal": false,
+      "avatar": "css:orbit",
+      "id": "01J00000000000000000000000",
+      "name": "群主",
+      "role": "",
+      "roleKey": "members.roles.owner",
+      "roleType": "owner",
+      "status": "online"
+    },
+    {
+      "autoStartTerminal": true,
+      "avatar": "css:orbit",
+      "collaborationMode": true,
+      "id": "01KJHXV72XMPD91HEHJ1WVAM84",
+      "manualStatus": "online",
+      "name": "项目经理",
+      "role": "",
+      "roleKey": "members.roles.aiAssistant",
+      "roleType": "assistant",
+      "sandboxed": false,
+      "skillPaths": [
+        "D:\\rpgServers\\.golutra\\skills\\project-development-quality-maintainability"
+      ],
+      "status": "online",
+      "terminalCommand": "claude",
+      "terminalType": "claude",
+      "unlimitedAccess": true
+    },
+    {
+      "autoStartTerminal": true,
+      "avatar": "css:storm",
+      "collaborationMode": true,
+      "id": "01KJHXVN3HN6ESXMY8JAAHMKJQ",
+      "manualStatus": "online",
+      "name": "后端大佬1",
+      "role": "",
+      "roleKey": "members.roles.member",
+      "roleType": "member",
+      "sandboxed": false,
+      "skillPaths": [
+        "D:\\rpgServers\\.golutra\\skills\\project-development-quality-maintainability"
+      ],
+      "status": "online",
+      "terminalCommand": "claude",
+      "terminalType": "claude",
+      "unlimitedAccess": true
+    },
+    {
+      "autoStartTerminal": true,
+      "avatar": "css:orbit",
+      "collaborationMode": true,
+      "id": "01KJHXVN3HP04Y4AGWDN3F4MY4",
+      "manualStatus": "online",
+      "name": "后端小弟",
+      "role": "",
+      "roleKey": "members.roles.member",
+      "roleType": "member",
+      "sandboxed": false,
+      "skillPaths": [
+        "D:\\rpgServers\\.golutra\\skills\\project-development-quality-maintainability"
+      ],
+      "status": "online",
+      "terminalCommand": "claude",
+      "terminalType": "claude",
+      "unlimitedAccess": true
+    },
+    {
+      "autoStartTerminal": true,
+      "avatar": "css:ember",
+      "collaborationMode": true,
+      "id": "01KJHXVN3HXXTC3QWJ3FJ0F2MS",
+      "manualStatus": "online",
+      "name": "后端专家",
+      "role": "",
+      "roleKey": "members.roles.member",
+      "roleType": "member",
+      "sandboxed": false,
+      "skillPaths": [
+        "D:\\rpgServers\\.golutra\\skills\\project-development-quality-maintainability"
+      ],
+      "status": "online",
+      "terminalCommand": "claude",
+      "terminalType": "claude",
+      "unlimitedAccess": true
+    }
+  ],
+  "projectId": "e0a3aad3ea64acc10aff4f9f75c29994fc44cb613432270adbab1ef18505806b",
+  "roadmap": {
+    "objective": "调通和客户端通过proto协议通信，给客户端一个代码模板，客户端用的是cocos开发用的也是ts",
+    "tasks": [
+      {
+        "id": 1,
+        "number": "01",
+        "pinned": false,
+        "status": "pending",
+        "title": "调通和客户端通过proto协议通信，给客户端一个代码模板，客户端用的是cocos开发用的也是ts"
+      }
+    ]
+  },
+  "terminal": {
+    "recentClosedTabs": [
+      {
+        "closedAt": 1772698953124,
+        "memberId": "01KJHXV72XMPD91HEHJ1WVAM84"
+      }
+    ]
+  },
+  "version": 1
+}
