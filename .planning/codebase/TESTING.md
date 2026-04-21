@@ -1,39 +1,43 @@
 # Testing Patterns
 
-**Analysis Date:** 2026/04/21
+**Analysis Date:** 2026-04-21
 
 ## Test Framework
 
-**Runner**: Jest v30.2.0
+**Framework:** Jest v30
+**TypeScript Support:** ts-jest
+**Testing Package:** @nestjs/testing v11.1.14
 
-**Configuration** (`package.json`):
+### Configuration
+
+Jest configuration is in `package.json`:
+
 ```json
-{
-  "jest": {
-    "moduleFileExtensions": ["js", "json", "ts"],
-    "rootDir": "src",
-    "testRegex": ".*\\.spec\\.ts$",
-    "transform": {
-      "^.+\\.(t|j)s$": "ts-jest"
-    },
-    "collectCoverageFrom": ["**/*.(t|j)s"],
-    "coverageDirectory": "../coverage",
-    "testEnvironment": "node",
-    "moduleNameMapper": {
-      "^@/(.*)$": "<rootDir>/$1",
-      "^@common/(.*)$": "<rootDir>/common/$1",
-      "^@config/(.*)$": "<rootDir>/config/$1",
-      "^@core/(.*)$": "<rootDir>/core/$1",
-      "^@database/(.*)$": "<rootDir>/database/$1",
-      "^@redis/(.*)$": "<rootDir>/redis/$1",
-      "^@modules/(.*)$": "<rootDir>/modules/$1",
-      "^@shared/(.*)$": "<rootDir>/shared/$1"
-    }
+"jest": {
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": "src",
+  "testRegex": ".*\\.spec\\.ts$",
+  "transform": {
+    "^.+\\.(t|j)s$": "ts-jest"
+  },
+  "collectCoverageFrom": ["**/*.(t|j)s"],
+  "coverageDirectory": "../coverage",
+  "testEnvironment": "node",
+  "moduleNameMapper": {
+    "^@/(.*)$": "<rootDir>/$1",
+    "^@common/(.*)$": "<rootDir>/common/$1",
+    "^@config/(.*)$": "<rootDir>/config/$1",
+    "^@core/(.*)$": "<rootDir>/core/$1",
+    "^@database/(.*)$": "<rootDir>/database/$1",
+    "^@redis/(.*)$": "<rootDir>/redis/$1",
+    "^@modules/(.*)$": "<rootDir>/modules/$1",
+    "^@shared/(.*)$": "<rootDir>/shared/$1"
   }
 }
 ```
 
-**Test Commands**:
+### Test Commands
+
 ```bash
 npm test              # Run all tests
 npm run test:watch    # Watch mode
@@ -42,51 +46,41 @@ npm run test:cov      # Coverage report
 
 ## Test File Organization
 
-**Location**: Tests are co-located with source files in `src/`
+**Current Status:** No test files found in project
 
-**Naming convention**: `*.spec.ts` (per Jest configuration)
+The project uses Jest with `*.spec.ts` naming convention, but no test files currently exist in the `src/` directory. Test files should follow the co-located pattern alongside source files.
 
-**Pattern**: `<file>.spec.ts` alongside `<file>.ts`
+### Expected Pattern (Not Yet Implemented)
 
-**Current Status**: **No test files exist in the codebase**
-- Search for `*.spec.ts` in `src/` returns no results
-- The Jest configuration is present but no tests have been written
-- Coverage has never been generated
-
-**Expected locations** (based on project structure):
 ```
 src/
-  modules/
-    auth/
-      auth.service.spec.ts      # Would test AuthService
-      auth.controller.spec.ts   # Would test AuthController
-    player/
-      player.service.spec.ts
-    estate/
-      estate.service.spec.ts
-    battle/
-      battle.service.spec.ts
-  database/
-    schemas/
-      player.schema.spec.ts
-  shared/
-    utils/
-      utils.spec.ts             # Would test utility functions
-  core/
-    message-router.spec.ts
+├── modules/
+│   ├── auth/
+│   │   ├── auth.module.ts
+│   │   ├── auth.service.ts
+│   │   ├── auth.controller.ts
+│   │   └── auth.service.spec.ts      # Co-located test
+│   └── player/
+│       ├── player.module.ts
+│       ├── player.service.ts
+│       └── player.service.spec.ts    # Co-located test
 ```
+
+### Test File Naming
+
+- **Pattern:** `*.spec.ts`
+- **Examples:** `auth.service.spec.ts`, `player.service.spec.ts`
 
 ## Test Structure
 
-Since no test files exist, patterns are inferred from:
-1. Jest configuration
-2. Source code structure
-3. NestJS testing patterns (using `@nestjs/testing`)
+Since no tests exist yet, the following patterns should be followed based on NestJS and Jest best practices:
 
-**Expected NestJS Test Structure**:
+### Service Testing Pattern
+
 ```typescript
-// Using @nestjs/testing
 import { Test, TestingModule } from '@nestjs/testing';
+import { getModelToken } from '@nestjs/mongoose';
+import { AuthService } from './auth.service';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -96,12 +90,26 @@ describe('AuthService', () => {
       providers: [
         AuthService,
         {
-          provide: JwtService,
-          useValue: { signAsync: jest.fn(), verifyAsync: jest.fn() },
+          provide: getModelToken(Player.name),
+          useValue: {
+            findOne: jest.fn(),
+            create: jest.fn(),
+            findById: jest.fn(),
+          },
         },
         {
           provide: RedisService,
-          useValue: { get: jest.fn(), set: jest.fn(), del: jest.fn() },
+          useValue: {
+            get: jest.fn(),
+            set: jest.fn(),
+          },
+        },
+        {
+          provide: JwtService,
+          useValue: {
+            signAsync: jest.fn(),
+            verifyAsync: jest.fn(),
+          },
         },
       ],
     }).compile();
@@ -112,122 +120,252 @@ describe('AuthService', () => {
   it('should be defined', () => {
     expect(service).toBeDefined();
   });
+
+  describe('wechatLogin', () => {
+    it('should return login response for new player', async () => {
+      // Arrange
+      const mockPlayer = { _id: '123', openId: 'test_openid' };
+      jest.spyOn(service, 'playerModel' as any, 'get').mockReturnValue({
+        findOne: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue(mockPlayer),
+      });
+
+      // Act
+      const result = await service.wechatLogin('test_code');
+
+      // Assert
+      expect(result.isNewPlayer).toBe(true);
+    });
+  });
+});
+```
+
+### Controller Testing Pattern
+
+```typescript
+import { Test, TestingModule } from '@nestjs/testing';
+import { AuthController } from './auth.controller';
+import { AuthService } from './auth.service';
+
+describe('AuthController', () => {
+  let controller: AuthController;
+  let service: AuthService;
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      controllers: [AuthController],
+      providers: [
+        {
+          provide: AuthService,
+          useValue: {
+            wechatLogin: jest.fn(),
+            accountLogin: jest.fn(),
+          },
+        },
+      ],
+    }).compile();
+
+    controller = module.get<AuthController>(AuthController);
+    service = module.get<AuthService>(AuthService);
+  });
+
+  it('should be defined', () => {
+    expect(controller).toBeDefined();
+  });
+
+  describe('wechatLogin', () => {
+    it('should call authService.wechatLogin with correct params', async () => {
+      const dto = { code: 'test_code' };
+      await controller.wechatLogin(dto);
+      expect(service.wechatLogin).toHaveBeenCalledWith(dto.code);
+    });
+  });
 });
 ```
 
 ## Mocking
 
-**Framework**: Jest mocks (built-in)
+### Mongoose Models
 
-**Module mocking** (typical pattern):
 ```typescript
-jest.mock('@/redis/redis.service', () => ({
-  RedisService: jest.fn().mockImplementation(() => ({
-    get: jest.fn(),
-    set: jest.fn(),
-    del: jest.fn(),
-    acquireLock: jest.fn(),
-    releaseLock: jest.fn(),
-  })),
-}));
+const mockPlayerModel = {
+  findById: jest.fn(),
+  findOne: jest.fn(),
+  create: jest.fn(),
+  countDocuments: jest.fn(),
+  updateOne: jest.fn(),
+};
+
+{
+  provide: getModelToken(Player.name),
+  useValue: mockPlayerModel,
+}
 ```
 
-**Service mocking in tests**:
+### Redis Service
+
 ```typescript
 const mockRedisService = {
-  get: jest.fn().mockResolvedValue(null),
-  set: jest.fn().mockResolvedValue('OK'),
-  del: jest.fn().mockResolvedValue(1),
+  get: jest.fn(),
+  set: jest.fn(),
+  del: jest.fn(),
+  getJson: jest.fn(),
+  setJson: jest.fn(),
+  acquireLock: jest.fn(),
+  releaseLock: jest.fn(),
 };
+
+{
+  provide: RedisService,
+  useValue: mockRedisService,
+}
 ```
 
-**Spy pattern**:
+### NestJS Config Service
+
 ```typescript
-jest.spyOn(service, 'generateTokens').mockResolvedValue(mockTokens);
+{
+  provide: ConfigService,
+  useValue: {
+    get: jest.fn().mockReturnValue(4),  // e.g., maxPartySize
+  },
+}
 ```
 
 ## Fixtures and Factories
 
-**Test data location**: Not established (no test files exist)
+Not yet implemented. Suggested pattern:
 
-**Expected pattern** (based on schema structure):
 ```typescript
-// factories/player.factory.ts
-import { faker } from '@faker-js/faker';
-import { Player } from '../database/schemas/player.schema';
-
-export const createMockPlayer = (overrides = {}): Partial<Player> => ({
-  _id: new Types.ObjectId(),
-  openId: faker.string.alphanumeric(16),
-  nickname: faker.internet.username(),
-  realm: 'foundation',
-  status: 'online',
-  combatAttributes: { realm: 1, physique: 1, spirit: 1, ... },
-  currencies: [
-    { type: 'spirit_stone', amount: 1000 },
-    { type: 'contribution', amount: 100 },
-  ],
-  inventory: new Map([['item_001', 10]]),
+// test/fixtures/player.fixture.ts
+export const createMockPlayer = (overrides = {}) => ({
+  _id: '507f1f77bcf86cd799439011',
+  openId: 'test_openid_123',
+  nickname: '测试道友',
+  realm: 'qi_refining',
+  status: 'offline',
+  combatAttributes: {},
+  inventory: new Map(),
   ...overrides,
 });
+
+export const createMockPlayerDocument = (overrides = {}) => {
+  const doc = createMockPlayer(overrides);
+  return {
+    ...doc,
+    save: jest.fn().mockResolvedValue(doc),
+    toObject: jest.fn().mockReturnValue(doc),
+  } as any;
+};
 ```
 
 ## Coverage
 
-**Configuration**: Coverage is configured but has never been run
+### Current Coverage Configuration
 
-**Coverage command**: `npm run test:cov`
+```json
+"collectCoverageFrom": ["**/*.(t|j)s"],
+"coverageDirectory": "../coverage"
+```
 
-**Output directory**: `coverage/`
+### Coverage Target
 
-**Current coverage**: 0% (no tests exist)
+Not specified - no enforced coverage threshold
 
-**Minimum thresholds**: Not configured
+### View Coverage
 
-## Test Types
+```bash
+npm run test:cov
+# Generates HTML report in coverage/ directory
+```
 
-Since no test files exist, the following would be appropriate based on the architecture:
+## Integration Testing
 
-### Unit Tests
-- **Scope**: Individual services, utilities, helpers
-- **Location**: Co-located `.spec.ts` files
-- **Example**:
-  - `auth.service.spec.ts` - Test JWT generation, token refresh, login logic
-  - `utils.spec.ts` - Test calculation functions
-  - `player.schema.spec.ts` - Test schema transformations
+Not yet implemented. For NestJS integration tests:
 
-### Integration Tests
-- **Scope**: Database operations with MongoDB
-- **Location**: Could use `__tests__/` directories or `.spec.ts` with `test/*` prefix
-- **Requires**: Test database connection
+```typescript
+import { INestApplication } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
 
-### E2E Tests
-- **Framework**: Not configured
-- **Alternative**: Could use Jest + Supertest for HTTP API tests
+describe('AppIntegration', () => {
+  let app: INestApplication;
 
-## Key Testing Gaps
+  beforeAll(async () => {
+    const moduleFixture = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
 
-### Critical Missing Tests
-1. **No service tests** - All business logic untested
-2. **No utility function tests** - Helper functions like `calculateEfficiencyTime` untested
-3. **No authentication flow tests** - JWT login/register/refresh untested
-4. **No database schema tests** - Mongoose transformations untested
-5. **No WebSocket gateway tests** - Message handling untested
-6. **No Redis operations tests** - Caching and locking logic untested
+    app = moduleFixture.createNestApplication();
+    await app.init();
+  });
 
-### Test Infrastructure Gaps
-1. **No test database setup** - No separate MongoDB instance for testing
-2. **No E2E test framework** - No Cypress, Playwright, or similar
-3. **No API contract tests** - Client/server protocol untested
-4. **No mocking infrastructure** - No mock libraries configured
+  afterAll(async () => {
+    await app.close();
+  });
 
-### Recommendations
-1. Add Jest tests for `AuthService` methods (login, register, token refresh)
-2. Add unit tests for utility functions in `src/shared/utils/index.ts`
-3. Configure test MongoDB instance using `mongodb-memory-server`
-4. Add integration tests for database operations
-5. Set up E2E tests for critical user flows
+  it('should connect to database', () => {
+    // Integration test
+  });
+});
+```
+
+## E2E Testing
+
+Not implemented. If added, suggested location:
+
+```
+src/
+└── test/
+    └── app.e2e-spec.ts
+```
+
+## Common Patterns
+
+### Async Testing
+
+```typescript
+it('should return player profile', async () => {
+  const playerId = '123';
+  const expectedPlayer = { _id: playerId, nickname: '测试' };
+
+  jest.spyOn(service, 'getProfile').mockResolvedValue(expectedPlayer);
+
+  const result = await service.getProfile(playerId);
+
+  expect(result).toEqual(expectedPlayer);
+});
+```
+
+### Error Testing
+
+```typescript
+it('should throw NotFoundException when player not found', async () => {
+  jest.spyOn(service, 'playerModel', 'get').mockReturnValue({
+    findById: jest.fn().mockResolvedValue(null),
+  });
+
+  await expect(service.getProfile('nonexistent')).rejects.toThrow(NotFoundException);
+});
+```
+
+### Testing Guards and Decorators
+
+```typescript
+import { createMockExecutorContext } from '@nestjs/testing';
+
+it('CurrentPlayerId decorator should extract playerId from request', () => {
+  const mockRequest = { playerId: '123' };
+  const context = createMockExecutorContext({
+    switchToHttp: () => ({
+      getRequest: () => mockRequest,
+    }),
+  });
+
+  const result = CurrentPlayerId(null, context as any);
+  expect(result).toBe('123');
+});
+```
 
 ---
 
-*Testing analysis: 2026/04/21*
+*Testing analysis: 2026-04-21*

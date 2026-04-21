@@ -1,309 +1,304 @@
 # Coding Conventions
 
-**Analysis Date:** 2026/04/21
+**Analysis Date:** 2026-04-21
 
 ## Naming Patterns
 
 ### Files
-- **Services, Controllers, Modules**: kebab-case with `.service.ts`, `.controller.ts`, `.module.ts` suffix
-  - Example: `auth.service.ts`, `player.service.ts`, `message.gateway.ts`
-- **Schemas**: kebab-case with `.schema.ts` suffix
-  - Example: `player.schema.ts`, `estate.schema.ts`
-- **Interfaces, Types, Enums, Utils**: `index.ts` barrel files in feature directories
-  - Example: `src/shared/interfaces/index.ts`, `src/shared/enums/index.ts`
-- **Config files**: kebab-case with `.config.ts` suffix
-  - Example: `app.config.ts`, `database.config.ts`
+
+- **Service files:** `[module].service.ts` - e.g., `auth.service.ts`, `player.service.ts`
+- **Controller files:** `[module].controller.ts` - e.g., `auth.controller.ts`, `player.controller.ts`
+- **Gateway files:** `[module].gateway.ts` - e.g., `message.gateway.ts`, `party.gateway.ts`
+- **Module files:** `[module].module.ts` - e.g., `auth.module.ts`, `battle.module.ts`
+- **Schema files:** `[entity].schema.ts` - e.g., `player.schema.ts`, `estate.schema.ts`
+- **Index files:** `index.ts` for barrel exports
+- **Enum files:** `enums/index.ts` for all enums
+- **Interface files:** `interfaces/index.ts` for all interfaces
+- **Constants files:** `constants/index.ts` for all constants
 
 ### Functions
-- **Methods**: camelCase
-  - Example: `wechatLogin()`, `accountRegister()`, `generateTokens()`
-- **Private methods**: camelCase with underscore prefix sometimes used
-  - Example: `mockGetOpenId()`, `buildPlayerData()`
-- **Utility functions**: camelCase, often exported directly
-  - Example: `now()`, `timeDiff()`, `calculateEfficiencyTime()`
+
+- **CamelCase** for all function names - e.g., `getProfile`, `updateStatus`, `wechatLogin`
+- **Private methods:** prefixed with `private` keyword
+- **Async functions:** always return `Promise<T>`
+- **Verb prefixes:** `get*`, `update*`, `create*`, `validate*`, `calculate*`, `build*`
 
 ### Variables
-- **Local variables**: camelCase
-  - Example: `playerId`, `openId`, `accessToken`, `refreshToken`
-- **Constants**: UPPER_SNAKE_CASE for configuration objects
-  - Example: `JWT_CONFIG.ACCESS_TOKEN_EXPIRY`, `CACHE_KEYS.PLAYER`
-- **Type aliases**: PascalCase
-  - Example: `EntityId`, `Timestamp`, `PlayerIdSet`
 
-### Types and Interfaces
+- **CamelCase** for local variables - e.g., `playerId`, `cacheKey`, `combatAttrs`
+- **PascalCase** for class properties and types
+- **UPPER_SNAKE_CASE** for constants - e.g., `JWT_CONFIG.ACCESS_TOKEN_EXPIRY`
+- **Descriptive names:** avoid single letters except in loops
 
-**Interfaces** (preferred for object shapes):
-```typescript
-export interface ITokenPayload {
-  playerId: string;
-  openId: string;
-  type: 'access' | 'refresh';
-  iat?: number;
-  exp?: number;
-}
-```
+### Types
 
-**Type aliases** (for unions, utility types):
-```typescript
-export type EntityId = string;
-export type Nullable<T> = T | null;
-export type DeepPartial<T> = { [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P] };
-```
-
-**Enums** (use for fixed sets of string values):
-```typescript
-export enum Realm {
-  QI_REFINING = 'qi_refining',
-  FOUNDATION = 'foundation',
-  // ...
-}
-```
-
-**Decorator-based classes** (Schema, Entity):
-```typescript
-@Schema({ timestamps: true, collection: 'players' })
-export class Player {
-  @Prop({ type: String, required: true, unique: true, index: true })
-  openId: string;
-}
-```
+- **Interfaces:** `I` prefix - e.g., `ITokenPayload`, `IPlayerData`, `ILoginResponse`
+- **Type aliases:** no prefix - e.g., `type Result = { success: boolean }`
+- **Enums:** PascalCase with descriptive values - e.g., `Realm.QI_REFINING = 'qi_refining'`
 
 ## Code Style
 
 ### Formatting
-- **Tool**: Not configured (no ESLint/Prettier at project root)
-- **Manual formatting**: 2-space indentation used in source files
-- **Quote style**: Single quotes for strings in TypeScript
+
+- **Tool:** TypeScript compiler with tsconfig
+- **Indentation:** 2 spaces
+- **Semicolons:** Yes
+- **Quotes:** Single for strings in TypeScript, double in JSON
 
 ### Linting
-- **Tool**: Not configured at project level
-- **TypeScript strictness**: Disabled (see tsconfig.json)
+
+- **Strict checks disabled in tsconfig:**
   - `strictNullChecks: false`
   - `noImplicitAny: false`
   - `strictBindCallApply: false`
+  - `noFallthroughCasesInSwitch: false`
 
-### TypeScript Settings (tsconfig.json)
+### Import Organization
+
+1. Node.js built-ins (e.g., `fs`, `path`)
+2. External packages (e.g., `@nestjs/common`, `mongoose`)
+3. Internal path aliases (e.g., `@/modules/...`, `@/shared/...`)
+4. Relative imports (e.g., `../../database/...`)
+
+### Path Aliases (tsconfig.json)
+
 ```json
-{
-  "noImplicitAny": false,
-  "strictNullChecks": false
-}
-```
-
-### `any` vs `unknown`
-- **`any`** is used liberally throughout the codebase due to `noImplicitAny: false`
-- **`unknown`** is used in generic contexts where type is truly unknown
-  - Example: `items: unknown[]` in `IPlayerData`
-
-## Import Organization
-
-**Order** (grouped by priority):
-1. NestJS framework imports (`@nestjs/*`)
-2. External packages (mongoose, bcryptjs, etc.)
-3. Internal path aliases (`@/`, `@modules/`, `@shared/`, etc.)
-4. Relative imports (`../../`, `../`)
-
-**Path aliases configured** (tsconfig.json):
-```json
-{
-  "@/*": ["src/*"],
-  "@common/*": ["src/common/*"],
-  "@config/*": ["src/config/*"],
-  "@core/*": ["src/core/*"],
-  "@database/*": ["src/database/*"],
-  "@redis/*": ["src/redis/*"],
-  "@modules/*": ["src/modules/*"],
-  "@shared/*": ["src/shared/*"]
-}
-```
-
-**Example imports**:
-```typescript
-import { Injectable, Logger, UnauthorizedException, ConflictException } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
-import { Player, PlayerDocument } from '../../database/schemas/player.schema';
-import { RedisService } from '@/redis/redis.service';
-import { CACHE_KEYS } from '@/shared/constants';
+"@/*": ["src/*"],
+"@common/*": ["src/common/*"],
+"@config/*": ["src/config/*"],
+"@core/*": ["src/core/*"],
+"@database/*": ["src/database/*"],
+"@redis/*": ["src/redis/*"],
+"@modules/*": ["src/modules/*"],
+"@shared/*": ["src/shared/*"]
 ```
 
 ## Error Handling
 
-### Pattern: Use NestJS Built-in Exceptions
+### NestJS Exceptions
+
+- Use NestJS built-in exceptions: `NotFoundException`, `BadRequestException`, `UnauthorizedException`, `ConflictException`
+- Always throw with descriptive Chinese messages
+
 ```typescript
-import { UnauthorizedException, ConflictException, BadRequestException, NotFoundException } from '@nestjs/common';
+// Not found
+throw new NotFoundException('玩家不存在');
 
-// In service methods
-if (!player) {
-  throw new NotFoundException('玩家不存在');
-}
+// Bad request
+throw new BadRequestException('当前装备不支持该流派');
 
-if (existingPlayer) {
-  throw new ConflictException('用户名已存在');
-}
+// Unauthorized
+throw new UnauthorizedException('用户名或密码错误');
 
-if (!isPasswordValid) {
-  throw new UnauthorizedException('用户名或密码错误');
-}
+// Conflict
+throw new ConflictException('用户名已存在');
 ```
 
-### Pattern: Try-Catch with Logger
+### Try-Catch Pattern
+
 ```typescript
 try {
-  const payload = await this.jwtService.verifyAsync<ITokenPayload>(refreshToken);
-  // ...
+  const result = await someAsyncOperation();
+  return result;
 } catch (error) {
-  this.logger.warn(`Token refresh failed: ${error.message}`);
-  throw new UnauthorizedException('无效的刷新令牌');
+  this.logger.warn(`Operation failed: ${error.message}`);
+  throw new BadRequestException('操作失败，请稍后再试');
 }
 ```
 
-### Pattern: Custom Error Objects
+### Error Logging
+
+- Use `Logger` from `@nestjs/common`
+- `logger.log()` for important events
+- `logger.debug()` for debug information
+- `logger.warn()` for recoverable issues
+- `logger.error()` for failures
+
 ```typescript
-private sendError(
-  client: IAuthenticatedSocket,
-  code: number,
-  seq: number,
-  errorMessage: string,
-  useProtobuf: boolean,
-): void {
-  const response = {
-    code,
-    seq,
-    payload: null,
-    error: {
-      code: ErrorCodes.UNKNOWN_ERROR,
-      message: errorMessage,
-    },
-    timestamp: Date.now(),
-    processingTime: 0,
-  };
-  // ...
+private readonly logger = new Logger(AuthService.name);
+
+// Usage
+this.logger.log(`New player created: ${player._id}`);
+this.logger.debug(`Player ${playerId} switched to ${style}`);
+this.logger.warn(`Token verification failed: ${error.message}`);
+this.logger.error(`Complete building failed: ${err.message}`);
+```
+
+## TypeScript Usage
+
+### Any vs Unknown
+
+- **`any`:** Used in DTO and when type is truly flexible - e.g., `async updateStatus(playerId: string, dto: any)`
+- **`unknown`:** Prefer when type is uncertain at runtime
+- **`as` casting:** Common for schema documents - e.g., `player.combatAttributes as Record<CombatAttribute, number>`
+
+### Interface vs Type
+
+- **Interfaces:** Preferred for public APIs and schema definitions
+- **Types:** Used for unions, intersections, and utility types
+- **Document types:** Mongoose documents use `Player & Document` pattern
+
+```typescript
+// Interface for public API
+export interface ITokenPayload {
+  playerId: string;
+  openId: string;
+  type: 'access' | 'refresh';
+}
+
+// Type for schema
+export type PlayerDocument = Player & Document;
+```
+
+### Decorators
+
+- **Class decorators:** `@Injectable()`, `@WebSocketGateway()`, `@Controller()`
+- **Method decorators:** `@Post()`, `@Get()`, `@SubscribeMessage()`
+- **Parameter decorators:** `@Body()`, `@CurrentPlayerId()`, `@Headers()`
+
+## Async/Await Pattern
+
+### Standard Pattern
+
+```typescript
+async getProfile(playerId: string): Promise<Player> {
+  // Try cache first
+  const cached = await this.redisService.getJson<Player>(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  // Fallback to database
+  const player = await this.playerModel.findById(playerId).lean();
+  if (!player) {
+    throw new NotFoundException('玩家不存在');
+  }
+
+  return player as Player;
 }
 ```
 
-## Logging
+### Promise.all for Parallel Operations
 
-**Framework**: NestJS Logger (`@nestjs/common`)
+```typescript
+const [accessToken, refreshToken] = await Promise.all([
+  this.jwtService.signAsync(accessTokenPayload, { expiresIn: '2h' }),
+  this.jwtService.signAsync(refreshTokenPayload, { expiresIn: '7d' }),
+]);
+```
 
-**Pattern**: Class-based logger instances
+### Async with Redis Locks
+
+```typescript
+const lockKey = `${CACHE_KEYS.LOCK}build:${playerId}:${buildingType}`;
+const lockValue = Date.now().toString();
+const acquired = await this.redisService.acquireLock(lockKey, lockValue, 30);
+
+if (!acquired) {
+  throw new BadRequestException('操作过于频繁，请稍后再试');
+}
+
+try {
+  // Perform operation
+} finally {
+  await this.redisService.releaseLock(lockKey, lockValue);
+}
+```
+
+## Module Design
+
+### Module Structure
+
+```
+src/modules/[module]/
+├── [module].module.ts      # Module definition
+├── [module].service.ts     # Business logic
+├── [module].controller.ts  # HTTP endpoints (if needed)
+├── [module].gateway.ts     # WebSocket handlers (if needed)
+└── index.ts                # Barrel export
+```
+
+### Barrel Exports (index.ts)
+
+```typescript
+export * from './player.module';
+export * from './player.service';
+export * from './player.controller';
+```
+
+### NestJS Dependency Injection
+
 ```typescript
 @Injectable()
-export class AuthService {
-  private readonly logger = new Logger(AuthService.name);
-
-  // Usage
-  this.logger.log(`New player created: ${player._id}`);
-  this.logger.debug(`Player ${playerId} logged in with JWT`);
-  this.logger.warn(`Token refresh failed: ${error.message}`);
-  this.logger.error(`Complete building failed: ${err.message}`);
+export class PlayerService {
+  constructor(
+    @InjectModel(Player.name)
+    private playerModel: Model<PlayerDocument>,
+    private eventManager: EventManager,
+    private redisService: RedisService,
+  ) {}
 }
 ```
 
-**Log levels used**: `log`, `debug`, `warn`, `error`
+## Comments
 
-**Structured logging**: Uses template strings with context
+### JSDoc for Public Methods
+
+```typescript
+/**
+ * 获取玩家完整资料
+ */
+async getProfile(playerId: string): Promise<Player> {}
+
+/**
+ * 切换流派
+ * 根据装备实时切换流派
+ */
+async switchStyle(playerId: string, style: CombatStyle): Promise<void> {}
+```
+
+### Deprecated Markers
+
+```typescript
+/**
+ * @deprecated 使用 verifyAccessToken 替代
+ */
+async verifySession(sessionKey: string): Promise<{ valid: boolean }> {}
+```
+
+### Section Dividers
+
+```typescript
+// ============================================
+// 向后兼容的方法 (已弃用)
+// ============================================
+```
+
+## Logging Patterns
+
+### Logger Injection
+
+```typescript
+private readonly logger = new Logger(AuthService.name);
+```
+
+### Log Levels
+
+```typescript
+this.logger.log(`New player created: ${player._id}`);           // Info - important events
+this.logger.debug(`Player ${playerId} logged in`);             // Debug - verbose info
+this.logger.warn(`Token refresh failed: ${error.message}`);    // Warn - recoverable issues
+this.logger.error(`Complete building failed: ${err.message}`); // Error - failures
+```
+
+### Structured Logging
+
 ```typescript
 this.logger.debug(
   `Player ${playerId} started building ${buildingType}, duration: ${buildTime}s`,
 );
 ```
 
-## Decorators
-
-### Custom Decorators
-```typescript
-// Current user extraction
-@CurrentPlayerId() playerId: string
-
-// Allow anonymous access
-@AllowAnonymous()
-
-// Guard usage
-@UseGuards(JwtAuthGuard)
-```
-
-### NestJS Decorators
-```typescript
-// HTTP
-@Controller('auth')
-@Post('wechat-login')
-@Get('verify-session')
-@Body() dto
-
-// WebSocket Gateway
-@WebSocketGateway({ namespace: '/', cors: { origin: '*' } })
-@SubscribeMessage('message')
-@MessageBody()
-@ConnectedSocket()
-
-// Dependency Injection
-@Injectable()
-@InjectModel(Player.name)
-@Inject(forwardRef(() => AuthService))
-```
-
-## Async/Await Patterns
-
-**Standard async/await** (no custom wrappers):
-```typescript
-async wechatLogin(code: string, encryptedData?: string, iv?: string): Promise<ILoginResponse> {
-  // Direct async/await
-  const player = await this.playerModel.findOne({ openId });
-  const tokens = await this.generateTokens(playerId, openId);
-}
-```
-
-**Promise.all for parallel operations**:
-```typescript
-const [accessToken, refreshToken] = await Promise.all([
-  this.jwtService.signAsync(accessTokenPayload, { expiresIn: JWT_CONFIG.ACCESS_TOKEN_EXPIRY }),
-  this.jwtService.signAsync(refreshTokenPayload, { expiresIn: JWT_CONFIG.REFRESH_TOKEN_EXPIRY }),
-]);
-```
-
-**Async with error wrapping**:
-```typescript
-async refreshTokens(refreshToken: string): Promise<ITokenResponse> {
-  try {
-    const payload = await this.jwtService.verifyAsync<ITokenPayload>(refreshToken, {...});
-    // ...
-  } catch (error) {
-    this.logger.warn(`Token refresh failed: ${error.message}`);
-    throw new UnauthorizedException('无效的刷新令牌');
-  }
-}
-```
-
-## Module Organization
-
-### Standard NestJS Module Structure
-```typescript
-// Module file (player.module.ts)
-@Module({
-  imports: [DatabaseModule, RedisModule],
-  controllers: [PlayerController],
-  providers: [PlayerService],
-  exports: [PlayerService],
-})
-export class PlayerModule {}
-```
-
-### Index Barrel Files
-Each directory typically has an `index.ts` that re-exports its contents:
-```typescript
-// src/modules/auth/index.ts
-export * from './auth.module';
-export * from './auth.service';
-export * from './auth.controller';
-```
-
-### Cross-Cutting Patterns
-- **Event Bus**: `src/core/cross-service.event-bus.ts`
-- **Message Router**: `src/core/message-router.ts`
-- **Config Manager**: `src/core/config.manager.ts`
-- **Redis Pub/Sub**: `src/redis/redis-pubsub.service.ts`
-
 ---
 
-*Convention analysis: 2026/04/21*
+*Convention analysis: 2026-04-21*

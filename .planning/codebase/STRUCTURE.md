@@ -1,232 +1,369 @@
-# Codebase Structure
+# 代码结构文档
 
-**Analysis Date:** 2026/04/21
+**分析日期:** 2026/04/21
 
-## Directory Layout
+## 项目目录结构
 
 ```
-D:\rpgServers/
-├── src/                          # Main source code
-│   ├── main.ts                   # Application entry point
-│   ├── app.module.ts             # Root module
-│   ├── common/                   # Shared components (filters, guards, interceptors, decorators, controllers)
-│   ├── config/                   # Configuration loaders
-│   ├── core/                     # Core services (event manager, config manager, event bus, message router)
-│   ├── database/                 # MongoDB/Mongoose connection and schemas
-│   ├── modules/                  # Feature modules (auth, player, battle, estate, market, offline, gateway)
-│   ├── redis/                    # Redis connection and services
-│   └── shared/                   # Shared types, constants, enums, utilities, protobuf
-├── shared/                       # Shared code between server and client
-│   ├── proto/                    # Protobuf definitions (game.proto)
-│   ├── protocol/                 # Protocol types and message codes
-│   └── (sync .bat file)          # Proto sync script
-├── client-template/              # Client-side code template
-├── dist/                         # Compiled output
-├── .claude/                      # Claude agent configuration
-├── .planning/                    # GSD planning documents
-├── package.json                  # Dependencies
-└── tsconfig.json                 # TypeScript configuration
+D:\rpgServers\
+├── src/                          # 服务端源代码
+├── shared/                        # 共享协议 (客户端和服务器共用)
+├── .claude/                       # Claude 配置
+├── package.json                   # NPM 包清单
+├── package-lock.json
+├── tsconfig.json                  # TypeScript 配置
+└── .env.local                     # 本地环境配置 (需创建)
 ```
 
-## Directory Purposes
+## 顶层目录用途
 
-### `src/`
-**Purpose:** Main server application source code
+### `src/` - 服务端源代码
 
-### `src/modules/` - Feature Modules
-**Purpose:** Business logic organized by domain
+```
+src/
+├── main.ts                       # 应用入口
+├── app.module.ts                 # 根模块
+├── config/                       # 配置模块
+├── core/                         # 核心功能
+├── database/                     # 数据库模块
+├── redis/                        # Redis 模块
+├── shared/                       # 共享工具和常量
+├── common/                       # 通用组件
+└── modules/                      # 业务模块
+```
 
-| Directory | Purpose | Key Files |
-|-----------|---------|-----------|
-| `auth/` | Authentication (WeChat, account/password, JWT) | `auth.module.ts`, `auth.service.ts`, `auth.controller.ts` |
-| `player/` | Player data, attributes, inventory | `player.module.ts`, `player.service.ts`, `player.controller.ts` |
-| `battle/` | Combat, parties, dungeons | `battle.module.ts`, `battle.service.ts`, `party.gateway.ts` |
-| `estate/` | "Immortal Mansion" base building | `estate.module.ts`, `estate.service.ts`, `estate.gateway.ts` |
-| `market/` | Trading, auction, risk control | `market.module.ts`, `market.service.ts`, `trade.gateway.ts` |
-| `offline/` | Offline rewards processing | `offline.module.ts`, `offline.service.ts` |
-| `gateway/` | WebSocket handling | `gateway.module.ts`, `message.gateway.ts`, `websocket.gateway.ts` |
-| `example/` | Example module | Example files |
+### `shared/` - 共享协议目录
 
-### `src/common/` - Cross-Cutting Components
-**Purpose:** Reusable infrastructure components
+```
+shared/
+├── proto/                        # Protobuf 协议定义
+│   └── game.proto                # 游戏协议定义
+├── protocol/                      # 协议常量 (客户端和服务器共用)
+│   ├── message-codes.ts          # 消息号定义
+│   ├── types.ts                  # 共享类型
+│   └── index.ts
+└── 同步proto.bat                  # 同步 proto 文件的脚本
+```
 
-| Directory | Purpose |
-|-----------|---------|
-| `controllers/` | Health, root controllers |
-| `decorators/` | `@CurrentUser()`, `@AllowAnonymous()` |
-| `filters/` | Exception filters |
-| `guards/` | JWT auth guard |
-| `interceptors/` | Transform, logging interceptors |
-| `pipes/` | Validation pipes |
+## `src/` 子目录详解
 
-### `src/core/` - Core Services
-**Purpose:** Application-wide singleton services
+### `src/config/` - 配置模块
 
-| File | Purpose |
-|------|---------|
-| `core.module.ts` | Global module exporting core services |
-| `event.manager.ts` | Event emission/handling |
-| `config.manager.ts` | Configuration management |
-| `cross-service.event-bus.ts` | Pub/sub between modules |
-| `message-router.ts` | Message code routing engine |
+**用途:** 集中管理应用配置
 
-### `src/database/` - Data Layer
-**Purpose:** MongoDB/Mongoose integration
+| 文件 | 用途 |
+|------|------|
+| `index.ts` | 配置导出汇总 |
+| `app.config.ts` | 应用配置 |
+| `database.config.ts` | MongoDB 配置 |
+| `redis.config.ts` | Redis 配置 |
+| `game.config.ts` | 游戏相关配置 |
 
-| File/Directory | Purpose |
-|----------------|---------|
-| `database.module.ts` | Mongoose connection module |
-| `schemas/` | Mongoose schema definitions |
-| `schemas/player.schema.ts` | Player document schema |
-| `schemas/estate.schema.ts` | Estate document schema |
-| `schemas/trade.schema.ts` | Trade document schema |
+**关键配置:**
+- MongoDB: `mongodb://localhost:27017/taixu`
+- Redis: 从环境变量读取
+- JWT Secret: 从环境变量读取，默认 `default-secret-change-in-production`
 
-### `src/redis/` - Cache Layer
-**Purpose:** Redis caching and pub/sub
+### `src/core/` - 核心功能
 
-| File | Purpose |
-|------|---------|
-| `redis.module.ts` | Redis connection module |
-| `redis.service.ts` | Basic get/set operations |
-| `redis-pubsub.service.ts` | Pub/sub for cross-instance events |
+**用途:** 应用核心功能模块
 
-### `src/config/` - Configuration
-**Purpose:** Environment configuration loading
+| 文件 | 用途 |
+|------|------|
+| `message-router.ts` | 消息号路由，将消息路由到处理器 |
+| `event.manager.ts` | 事件管理 |
+| `config.manager.ts` | 配置管理器 |
+| `cross-service.event-bus.ts` | 跨服务事件总线 |
+| `index.ts` | 导出汇总 |
 
-| File | Purpose |
-|------|---------|
-| `index.ts` | Export all configurations |
-| `app.config.ts` | Application settings |
-| `database.config.ts` | MongoDB connection |
-| `redis.config.ts` | Redis connection |
-| `game.config.ts` | Game-specific settings |
+### `src/database/` - 数据库模块
 
-### `src/shared/` - Shared Code
-**Purpose:** Types, constants, utilities shared across modules
+**用途:** MongoDB 连接和 Schema 定义
 
-| Directory | Purpose |
-|-----------|---------|
-| `constants/` | Message codes, cache keys, event names |
-| `enums/` | Realm, CombatAttribute, ProductionSkill, etc. |
-| `interfaces/` | Shared interfaces |
-| `types/` | Type definitions |
-| `utils/` | Utility functions |
-| `protobuf/` | Protobuf encoding/decoding service |
+| 文件 | 用途 |
+|------|------|
+| `database.module.ts` | 数据库模块 (全局) |
+| `schemas/index.ts` | Schema 导出汇总 |
+| `schemas/player.schema.ts` | 玩家数据 Schema |
+| `schemas/estate.schema.ts` | 仙府数据 Schema |
+| `schemas/trade.schema.ts` | 交易数据 Schema |
+| `index.ts` | 导出汇总 |
 
-### `shared/` - Client-Server Shared
-**Purpose:** Code shared between server and client (proto definitions)
+**Player Schema 关键字段:**
+```typescript
+{
+  username, passwordHash, passwordSalt,  // 账号登录
+  openId,                                // 微信 openId
+  nickname, avatarUrl,                   // 基本信息
+  realm, realmProgress,                  // 境界
+  status,                                // 在线状态
+  combatAttributes,                      // 战斗属性 (8种)
+  productionSkills,                      // 生产技能 (10种)
+  unlockedMeridianSlots,                 // 经脉槽位
+  equippedArtifacts,                     // 经脉装备
+  equipments,                            // 装备
+  currencies,                            // 货币
+  inventory,                             // 背包物品 (Map<string, number>)
+  statistics,                            // 统计数据
+}
+```
 
-| Directory/File | Purpose |
-|----------------|---------|
-| `proto/game.proto` | Protobuf message definitions |
-| `protocol/types.ts` | Protocol types |
-| `protocol/message-codes.ts` | Message codes (mirror of src/shared/constants/message-codes.ts) |
+**Estate Schema 关键字段:**
+```typescript
+{
+  playerId,                              // 玩家ID (唯一索引)
+  buildings: [{
+    type,                               // 建筑类型
+    level,                              // 等级
+    buildProgress,                      // 建造进度
+    isConstructing,                    // 是否建造中
+    boostEndTime,                       // 加速结束时间
+  }],
+  spiritGatheringRate,                   // 灵气聚集速率
+  visitorLogs: [{                       // 访客记录
+    visitorId, visitTime, action, targetBuilding
+  }],
+  lastStealTimes,                        // 偷取冷却
+}
+```
 
-## Key File Locations
+### `src/redis/` - Redis 模块
 
-**Entry Points:**
-- `src/main.ts` - Application bootstrap
-- `src/app.module.ts` - Root module
+**用途:** Redis 连接和缓存服务
 
-**Configuration:**
-- `src/config/index.ts` - All config loaders
-- `package.json` - Dependencies
+| 文件 | 用途 |
+|------|------|
+| `redis.module.ts` | Redis 模块 |
+| `redis.service.ts` | Redis 服务 (缓存、锁、发布订阅) |
+| `redis-pubsub.service.ts` | Redis 发布订阅服务 |
+| `index.ts` | 导出汇总 |
 
-**Core Logic:**
-- `src/core/message-router.ts` - Message routing engine
-- `src/modules/auth/auth.service.ts` - Authentication logic
-- `src/modules/gateway/message.gateway.ts` - Primary WebSocket gateway
+### `src/shared/` - 共享工具
 
-**Testing:**
-- `src/**/*.spec.ts` - Test files ( Jest)
-- `package.json` - Jest configuration
+**用途:** 各模块共享的工具、常量、类型
 
-## Naming Conventions
+| 目录/文件 | 用途 |
+|-----------|------|
+| `constants/index.ts` | 全局常量 (缓存Key、事件名、系统限制) |
+| `constants/message-codes.ts` | 消息号定义 |
+| `enums/index.ts` | 游戏枚举 (Realm, CombatAttribute, CurrencyType 等) |
+| `types/index.ts` | 共享类型定义 |
+| `utils/index.ts` | 共享工具函数 |
+| `protobuf/` | Protobuf 编解码服务 |
 
-**Files:**
-- Modules: `*.module.ts`, `*.service.ts`, `*.controller.ts`, `*.gateway.ts`
-- Schemas: `*.schema.ts`
-- Tests: `*.spec.ts`
-- Index re-exports: `index.ts`
+### `src/common/` - 通用组件
 
-**Classes:**
-- Modules: `XxxModule`
-- Services: `XxxService`
-- Controllers: `XxxController`
-- Gateways: `XxxGateway` or `XxxGatewayImpl`
-- Schemas: `Xxx` (Document class), `XxxSchema`
-- Guards: `XxxGuard`
-- Filters: `XxxFilter`
-- Interceptors: `XxxInterceptor`
-- Decorators: PascalCase (e.g., `@CurrentUser()`)
+**用途:** 可复用的 NestJS 组件
 
-**Directories:**
-- All lowercase with hyphens (e.g., `battle.module.ts`, not `battleModule/`)
-- Subdirectories for grouped related files (e.g., `schemas/`, `controllers/`)
+| 目录 | 用途 |
+|------|------|
+| `controllers/` | 通用控制器 (health, root) |
+| `decorators/` | 装饰器 (CurrentUser, AllowAnonymous) |
+| `filters/` | 异常过滤器 |
+| `guards/` | 守卫 (JwtAuthGuard) |
+| `interceptors/` | 拦截器 (Protobuf, Transform, Logging) |
+| `pipes/` | 管道 |
 
-**Variables/Functions:**
-- camelCase: `playerId`, `accessToken`, `wechatLogin()`
-- Constants: UPPER_SNAKE_CASE: `ACCESS_TOKEN_EXPIRY`, `JWT_CONFIG`
-- Enum members: UPPER_SNAKE_CASE or camelCase depending on definition
-  - `ErrorCodes.UNKNOWN_ERROR` (const object)
-  - `Realm.QI_REFINING` (enum class)
+### `src/modules/` - 业务模块
 
-## Where to Add New Code
+**用途:** 业务功能模块
 
-**New Feature Module:**
-1. Create directory: `src/modules/<feature>/`
-2. Create files:
-   - `<feature>.module.ts` - Module definition
-   - `<feature>.service.ts` - Business logic
-   - `<feature>.controller.ts` - HTTP endpoints (optional)
-   - `<feature>.gateway.ts` - WebSocket gateway (optional)
-   - `index.ts` - Re-exports
-3. Register in `src/app.module.ts` imports
-4. Register message handlers in appropriate gateway
+| 模块目录 | 功能 |
+|----------|------|
+| `auth/` | 认证 (微信登录、账号密码登录、Token管理) |
+| `gateway/` | WebSocket 网关 (消息路由、连接管理) |
+| `player/` | 玩家数据 (资料、属性、背包) |
+| `battle/` | 战斗系统 (流派、队伍、副本) |
+| `estate/` | 仙府系统 (建筑、访客、偷灵气) |
+| `market/` | 坊市系统 (上架、购买、拍卖) |
+| `offline/` | 离线收益 |
+| `example/` | 示例模块 |
 
-**New Message Handler:**
-1. Add message codes to `src/shared/constants/message-codes.ts`
-2. In the gateway's `registerHandlers()` method, add:
-   ```typescript
-   this.messageRouter.register(NEW_CODE_REQ, async (msg) => {
-     // handler logic
-   }, { requireAuth: true/false });
+## 关键文件位置
+
+### 入口文件
+
+| 文件 | 路径 | 用途 |
+|------|------|------|
+| 应用入口 | `src/main.ts` | 启动服务器、配置中间件 |
+| 根模块 | `src/app.module.ts` | 组织所有功能模块 |
+
+### 配置文件
+
+| 文件 | 路径 | 用途 |
+|------|------|------|
+| 应用配置 | `src/config/app.config.ts` | 端口、环境等 |
+| 数据库配置 | `src/config/database.config.ts` | MongoDB 连接 |
+| Redis 配置 | `src/config/redis.config.ts` | Redis 连接 |
+| 游戏配置 | `src/config/game.config.ts` | 游戏系统参数 |
+| 环境变量 | `.env` | 密钥等敏感配置 |
+
+### 核心逻辑文件
+
+| 文件 | 路径 | 用途 |
+|------|------|------|
+| 消息网关 | `src/modules/gateway/message.gateway.ts` | WebSocket 消息处理 |
+| 消息路由 | `src/core/message-router.ts` | 消息号 -> 处理器映射 |
+| 认证服务 | `src/modules/auth/auth.service.ts` | 登录、Token 管理 |
+| 玩家服务 | `src/modules/player/player.service.ts` | 玩家数据操作 |
+| 战斗服务 | `src/modules/battle/battle.service.ts` | 战斗逻辑 |
+| 仙府服务 | `src/modules/estate/estate.service.ts` | 仙府逻辑 |
+| 市场服务 | `src/modules/market/market.service.ts` | 市场交易逻辑 |
+
+### 协议定义文件
+
+| 文件 | 路径 | 用途 |
+|------|------|------|
+| Protobuf 定义 | `shared/proto/game.proto` | 协议消息格式 |
+| 消息号定义 | `src/shared/constants/message-codes.ts` | 消息码常量 |
+
+## 命名约定
+
+### 文件命名
+
+| 类型 | 约定 | 示例 |
+|------|------|------|
+| TypeScript 源文件 |  kebab-case | `player.service.ts` |
+| Schema 文件 |  kebab-case | `player.schema.ts` |
+| 目录 |  kebab-case | `modules/gateway/` |
+| 模块入口 |  index.ts | `modules/auth/index.ts` |
+| 配置文件 |  kebab-case | `database.config.ts` |
+
+### 目录命名
+
+| 目录 | 命名 | 说明 |
+|------|------|------|
+| 业务模块 |  kebab-case | `modules/estate/` |
+| Schema 目录 |  kebab-case | `database/schemas/` |
+| 通用组件 |  kebab-case | `common/decorators/` |
+| 配置文件 |  kebab-case | `config/` |
+
+### 代码命名
+
+| 类型 | 约定 | 示例 |
+|------|------|------|
+| 类名 | PascalCase | `AuthService`, `PlayerSchema` |
+| 接口名 | PascalCase | `ILoginResponse`, `IGameMessage` |
+| 枚举 | PascalCase | `Realm`, `CombatAttribute` |
+| 函数/方法 | camelCase | `wechatLogin()`, `buyItem()` |
+| 变量 | camelCase | `playerId`, `accessToken` |
+| 常量 | UPPER_SNAKE_CASE | `JWT_CONFIG`, `CACHE_KEYS` |
+| 枚举值 | SNAKE_CASE | `QI_REFINING`, `SPIRIT_STONE` |
+
+### 数据库 Schema 命名
+
+| 类型 | 约定 | 示例 |
+|------|------|------|
+| Schema 类名 | PascalCase | `Player`, `Estate`, `Trade` |
+| Collection 名称 | 小写复数 | `players`, `estates`, `trades` |
+| 索引字段 | 小写 | `playerId`, `openId` |
+| 字段名 | camelCase | `lastLoginAt`, `realmProgress` |
+
+## 模块添加指南
+
+### 添加新业务模块
+
+1. 在 `src/modules/` 下创建目录:
+   ```
+   src/modules/new-feature/
+   ├── new-feature.module.ts
+   ├── new-feature.controller.ts (可选)
+   ├── new-feature.service.ts
+   ├── new-feature.gateway.ts (可选)
+   └── index.ts
    ```
 
-**New Database Schema:**
-1. Create `src/database/schemas/<name>.schema.ts`
-2. Define schema class and export both class and schema
-3. Add to `src/database/schemas/index.ts`
-4. Import `DatabaseModule` in the feature module
-5. Inject via `@InjectModel()` decorator
+2. 在模块内注册服务:
+   ```typescript
+   // new-feature.module.ts
+   @Module({
+     providers: [NewFeatureService],
+     controllers: [NewFeatureController],
+     exports: [NewFeatureService],
+   })
+   export class NewFeatureModule {}
+   ```
 
-**New Redis-based Cache:**
-1. Use `RedisService` methods: `get`, `set`, `del`, `getJson`, `setJson`
-2. Use cache key constants from `src/shared/constants/`
+3. 在 `src/modules/index.ts` 中导出
 
-**New WebSocket Gateway:**
-1. Create gateway class with `@WebSocketGateway({ namespace: 'xxx' })`
-2. Decorate methods with `@SubscribeMessage('eventName')`
-3. Add to appropriate module's providers
+4. 在 `app.module.ts` 中导入
 
-## Special Directories
+### 添加新消息处理
 
-### `shared/proto/`
-- **Purpose:** Protobuf message definitions (`.proto` files)
-- **Generated:** Not auto-generated (manual `.proto` files)
-- **Committed:** Yes
-- **Note:** These define the wire protocol between server and client
+1. 在 `message-codes.ts` 中定义消息码:
+   ```typescript
+   export const NewFeatureCodes = {
+     DO_SOMETHING_REQ: 7000,
+     DO_SOMETHING_RESP: 7001,
+   };
+   ```
 
-### `client-template/`
-- **Purpose:** Client-side code template for game client
-- **Generated:** No
-- **Committed:** Yes
+2. 在 Gateway 中注册处理器:
+   ```typescript
+   // message.gateway.ts 的 registerHandlers()
+   this.messageRouter.register(NewFeatureCodes.DO_SOMETHING_REQ,
+     async (msg) => {
+       // 处理逻辑
+       return result;
+     },
+     { requireAuth: true }
+   );
+   ```
 
-### `dist/`
-- **Purpose:** Compiled TypeScript output
-- **Generated:** Yes (by `npm run build`)
-- **Committed:** No (typically in .gitignore)
+### 添加新 Schema
+
+1. 在 `src/database/schemas/` 创建文件:
+   ```typescript
+   // new-entity.schema.ts
+   @Schema({ collection: 'new_entities' })
+   export class NewEntity {
+     @Prop({ required: true })
+     name: string;
+   }
+   export const NewEntitySchema = SchemaFactory.createForClass(NewEntity);
+   ```
+
+2. 在 `database.module.ts` 中注册:
+   ```typescript
+   MongooseModule.forFeature([
+     { name: NewEntity.name, schema: NewEntitySchema },
+   ]);
+   ```
+
+## 特殊目录说明
+
+### `shared/` 目录
+
+**用途:** 客户端和服务器共享的协议定义
+
+**注意:**
+- `shared/proto/game.proto` 定义了所有游戏消息的 Protobuf 格式
+- `shared/protocol/message-codes.ts` 定义了消息号 (客户端和服务器必须一致)
+- 客户端应该复制 `shared/` 目录下的文件使用
+
+### `.claude/` 目录
+
+**用途:** Claude Code 配置
+
+| 文件 | 用途 |
+|------|------|
+| `settings.local.json` | 本地设置 |
+| `skills/` | 技能定义 |
+
+### `.env` 文件
+
+**用途:** 环境变量配置
+
+**关键变量:**
+```bash
+MONGODB_URI=mongodb://localhost:27017/taixu
+REDIS_HOST=localhost
+REDIS_PORT=6379
+JWT_SECRET=your-secret-key
+JWT_REFRESH_SECRET=your-refresh-secret
+NODE_ENV=development
+```
 
 ---
 
-*Structure analysis: 2026/04/21*
+*结构分析: 2026/04/21*

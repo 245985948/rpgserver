@@ -1,238 +1,457 @@
-# Architecture
+# 架构文档
 
-**Analysis Date:** 2026/04/21
+**分析日期:** 2026/04/21
 
-## Pattern Overview
+## 架构概述
 
-**Overall:** NestJS-based Modular Monolith with Gateway-driven WebSocket Communication
+**整体模式:** NestJS 模块化架构 + Socket.IO WebSocket 网关
 
-**Key Characteristics:**
-- NestJS framework with dependency injection throughout
-- Message-code based routing via `MessageRouter` (not REST endpoints)
-- Dual WebSocket gateways: `MessageGateway` (Socket.IO) and `WebSocketGatewayImpl` (native WS)
-- Protobuf + JSON dual protocol support for WebSocket messages
-- JWT-based authentication with refresh token rotation
-- MongoDB/Mongoose for persistence, Redis for caching/sessions
+**核心特点:**
+- 基于 NestJS 框架的分层模块化架构
+- MongoDB (Mongoose ODM) 作为主数据库
+- Redis 用于缓存、会话管理和分布式锁
+- Socket.IO 实现 WebSocket 通信，支持双协议 (JSON + Protobuf)
+- JWT Token 实现无状态认证
+- 消息号路由模式实现统一的消息处理
 
-## Layers
+## 分层架构
 
-### Entry Layer
-- **Location:** `src/main.ts`
-- **Purpose:** Bootstrap NestJS application with WebSocket adapter
-- **Responsibilities:**
-  - Initialize Socket.IO adapter via `IoAdapter`
-  - Configure global pipes (ValidationPipe), interceptors, filters
-  - Enable CORS with Authorization header support
-  - Set global prefix `api` for HTTP routes
-  - Configure Keep-Alive timeouts (65s/66s)
+### 入口层 (Entry Layer)
 
-### Gateway Layer (`src/modules/gateway/`)
-- **Purpose:** Handle all WebSocket client connections and message routing
-- **Location:** `src/modules/gateway/gateway.module.ts`
-- **Contains:**
-  - `MessageGateway` - Primary Socket.IO gateway at namespace `/`
-  - `WebSocketGatewayImpl` - Native WebSocket gateway at namespace `/game-ws`
-  - `TestGateway` - Testing gateway
-  - `MessageRouter` - Core routing engine in `src/core/message-router.ts`
-- **Depends on:** `AuthService`, `Player` model, `ProtobufService`
-- **Pattern:** All incoming messages go to `message` event, routed by message code to handlers
+**文件位置:** `src/main.ts`
 
-### Auth Layer (`src/modules/auth/`)
-- **Purpose:** Handle authentication (WeChat, account/password) and JWT management
-- **Location:** `src/modules/auth/auth.module.ts`
-- **Key Files:**
-  - `auth.service.ts` - Core auth logic
-  - `auth.controller.ts` - HTTP endpoints for auth
-  - `test-auth.controller.ts` - Test endpoints
-- **Features:**
-  - JWT access tokens (2h expiry) and refresh tokens (7d expiry)
-  - Refresh tokens stored in Redis for revocation capability
-  - WeChat login (mock implementation)
-  - Account registration with bcrypt password hashing
-  - Account login with bcrypt comparison
+- 启动 NestJS 应用
+- 配置 WebSocket 适配器 (IoAdapter)
+- 设置全局管道、拦截器、过滤器
+- 启用 CORS 和全局前缀 `/api`
+- HTTP Keep-Alive 配置 (65秒)
 
-### Business Modules Layer (`src/modules/`)
-- **Player Module** (`src/modules/player/`)
-  - Player data management, combat attributes, production skills
-  - Services: `PlayerService`
-  - Gateway: None (uses MessageRouter handlers)
+### 应用模块层 (App Module)
 
-- **Battle Module** (`src/modules/battle/`)
-  - Battle system, party system, dungeon system
-  - Services: `BattleService`, `DungeonService`
-  - Gateways: `PartyGateway` (namespace `party`)
+**文件位置:** `src/app.module.ts`
 
-- **Estate Module** (`src/modules/estate/`)
-  - "Immortal Mansion" - player base/building system
-  - Services: `EstateService`
-  - Gateways: `EstateGateway` (namespace `estate`)
-
-- **Market Module** (`src/modules/market/`)
-  - Trading, auction, risk control
-  - Services: `MarketService`, `AuctionService`, `RiskControlService`
-  - Gateways: `TradeGateway` (namespace `trade`)
-
-- **Offline Module** (`src/modules/offline/`)
-  - Offline reward processing
-  - Services: `OfflineService`
-
-### Core Infrastructure Layer (`src/core/`)
-- **Location:** `src/core/core.module.ts` (Global)
-- **Contains:**
-  - `EventManager` - Event emission/handling
-  - `ConfigManager` - Configuration management
-  - `CrossServiceEventBus` - Cross-module event bus
-  - `MessageRouter` - Message routing engine (NOT in core.module.ts, but in gateway.module.ts providers)
-
-### Data Layer (`src/database/`)
-- **Location:** `src/database/database.module.ts`
-- **Purpose:** MongoDB/Mongoose connection and schema exports
-- **Schemas:**
-  - `Player` (`src/database/schemas/player.schema.ts`)
-  - `Estate` (`src/database/schemas/estate.schema.ts`)
-  - `Trade` (`src/database/schemas/trade.schema.ts`)
-
-### Cache Layer (`src/redis/`)
-- **Location:** `src/redis/redis.module.ts`
-- **Purpose:** Redis connection and caching
-- **Services:**
-  - `RedisService` - Basic get/set operations
-  - `RedisPubSubService` - Pub/sub for cross-instance communication
-
-### Shared Layer (`src/shared/`)
-- **Purpose:** Shared types, constants, utilities, protobuf definitions
-- **Key Files:**
-  - `constants/message-codes.ts` - All message codes (System, Auth, Player, Battle, Economy, Estate, Social, ServerPush, Error)
-  - `protobuf/` - Protobuf encoding/decoding service
-  - `enums/index.ts` - Realm, CombatAttribute, ProductionSkill, BuildingType, etc.
-  - `interfaces/index.ts` - Shared interfaces
-  - `types/index.ts` - Type definitions
-
-### Common Layer (`src/common/`)
-- **Purpose:** Cross-cutting concerns (filters, guards, interceptors, decorators)
-- **Contains:**
-  - `guards/jwt-auth.guard.ts` - JWT validation for HTTP
-  - `decorators/current-user.decorator.ts` - Extract current user
-  - `decorators/allow-anonymous.decorator.ts` - Skip auth
-  - `filters/` - HttpExceptionFilter, AllExceptionsFilter
-  - `interceptors/` - TransformInterceptor, LoggingInterceptor
-  - `pipes/` - Validation pipes
-  - `controllers/` - Health controller, Root controller
-
-## Data Flow
-
-### WebSocket Message Flow
 ```
-Client (Socket.IO) 
-    ↓ connect to ws://host/game?token=<jwt>
-MessageGateway.handleConnection()
-    ↓ verify token, extract playerId
-    ↓ emit 'connected' event
-Client 
-    ↓ emit 'message' event with {code, seq, payload}
-MessageGateway.handleMessage()
-    ↓ parse (Protobuf or JSON)
-    ↓ build IGameMessage {code, payload, playerId, seq, timestamp}
-    ↓ route() via MessageRouter
-    ↓ find handler by code
-    ↓ execute handler (may call service layer)
-    ↓ build response {code: responseCode, seq, payload, timestamp}
-    ↓ emit 'message' event to client
+AppModule
+├── ConfigModule (全局配置)
+├── CoreModule (核心)
+├── DatabaseModule (MongoDB连接)
+├── RedisModule (Redis连接)
+├── ProtobufModule (Protobuf序列化)
+├── CommonModule (通用组件)
+├── AuthModule (认证)
+├── PlayerModule (玩家)
+├── OfflineModule (离线)
+├── BattleModule (战斗)
+├── EstateModule (仙府)
+├── MarketModule (坊市)
+└── GatewayModule (WebSocket网关)
 ```
 
-### Authentication Flow (WeChat Login)
-```
-Client → WEECHAT_LOGIN_REQ {code}
-    ↓
-MessageGateway.route() → AuthService.wechatLogin()
-    ↓ mockWechatAPI → openId
-    ↓ findOrCreate Player in MongoDB
-    ↓ generateTokens() → {accessToken, refreshToken}
-    ↓ storeRefreshToken() in Redis
-    ↓ return {playerId, tokens, isNewPlayer, playerData, inventory}
-```
+### 核心基础设施层 (Infrastructure)
 
-### Message Code Routing
-- Codes are grouped by module (1000 = Auth, 2000 = Player, etc.)
-- Even codes = requests, odd codes = responses
-- Codes >= 900000 = server push
-- `MessageRouter.register(code, handler, {requireAuth})` for each message
-- `MessageRouter.route(message)` dispatches to registered handler
+**位置:** `src/core/`
 
-## Key Abstractions
+| 模块 | 文件 | 职责 |
+|------|------|------|
+| MessageRouter | `core/message-router.ts` | 消息号路由，将消息号路由到对应处理器 |
+| EventManager | `core/event.manager.ts` | 事件管理 (待查看具体实现) |
+| ConfigManager | `core/config.manager.ts` | 配置管理 |
 
-### IGameMessage
+### 数据层 (Data Layer)
+
+**位置:** `src/database/`
+
+| Schema | 文件 | 用途 |
+|--------|------|------|
+| Player | `database/schemas/player.schema.ts` | 玩家数据 (角色、属性、背包、装备、货币) |
+| Estate | `database/schemas/estate.schema.ts` | 仙府数据 (建筑、访客记录) |
+| Trade | `database/schemas/trade.schema.ts` | 交易数据 (市场中上架的物品) |
+
+**数据库配置:** `src/config/database.config.ts`
+- MongoDB URI: `mongodb://localhost:27017/taixu`
+- 连接池: 最大50，最小10
+
+### 缓存层 (Cache Layer)
+
+**位置:** `src/redis/`
+
+**服务:** `redis/redis.service.ts`
+
+核心功能:
+- 基础缓存 (GET/SET/DEL)
+- JSON 对象缓存
+- 哈希表操作
+- 有序集合 (排行榜)
+- **分布式锁** (acquireLock/releaseLock)
+- 发布/订阅
+
+**缓存 Key 前缀定义:** `src/shared/constants/index.ts`
 ```typescript
-interface IGameMessage<T = unknown> {
-  code: number;        // Message code
-  payload: T;          // Message data
-  playerId?: string;    // Authenticated player ID
-  seq: number;          // Sequence for matching request/response
-  timestamp: number;   // Client timestamp
+CACHE_KEYS = {
+  PLAYER: 'player:',        // 玩家数据缓存
+  SESSION: 'session:',      // 会话管理
+  RANKING: 'ranking:',      // 排行榜
+  AUCTION: 'auction:',       // 拍卖
+  MARKET: 'market:',         // 市场列表
+  DUNGEON: 'dungeon:',       // 副本
+  PARTY: 'party:',           // 队伍
+  ESTATE: 'estate:',         // 仙府
+  LOCK: 'lock:',             // 分布式锁
 }
 ```
-- Used throughout the gateway layer for all message handling
 
-### MessageRouter
+### 消息网关层 (Gateway Layer)
+
+**位置:** `src/modules/gateway/`
+
+#### MessageGateway (主网关)
+
+**文件:** `gateway/message.gateway.ts`
+
+**职责:**
+- 统一处理所有 WebSocket 消息
+- 通过消息号路由到处理器
+- 支持 Protobuf 和 JSON 双协议自动检测
+- 管理玩家连接状态
+
+**配置:**
 ```typescript
-class MessageRouter {
-  register<T, R>(code: number, handler: MessageHandler<T, R>, config?: {requireAuth?: boolean; rateLimit?: number}): void
-  route<T, R>(message: IGameMessage<T>): Promise<R | null>
-  // Also supports observable-based pub/sub for internal events
+@WebSocketGateway({
+  namespace: '/',
+  cors: { origin: '*', credentials: false },
+  transports: ['websocket', 'polling'],
+  allowEIO3: true,
+})
+```
+
+**消息格式:**
+```typescript
+interface IWSMessageBody {
+  code: number;    // 消息号
+  seq: number;     // 序列号
+  payload: unknown; // 消息数据
+  useProtobuf?: boolean;
 }
 ```
-- Central routing engine, registered by gateways and potentially other modules
 
-### Player Document
-- Mongoose document with nested subdocuments: CombatAttributes, ProductionSkillData, Equipment, Currency
-- Inventory stored as Map<string, number>
-- Password hash/salt stored but excluded from JSON output
+#### WebSocketGatewayImpl (原生 WebSocket)
 
-## Entry Points
+**文件:** `gateway/websocket.gateway.ts`
 
-**HTTP API:**
-- `src/main.ts` - NestJS bootstrap, global prefix `api`
-- Auth endpoints via `AuthController` (e.g., `/api/auth/...`)
-- Health check: `/api/health`
+- 命名空间: `/game-ws`
+- 为不支持 Socket.IO 的客户端提供原生 WebSocket 支持
 
-**WebSocket:**
-- Socket.IO: `ws://host/game` (namespace `/`)
-- Native WebSocket: `ws://host/game-ws` (namespace `game-ws`)
+#### MessageRouter (消息路由器)
 
-**Module Entry:**
-- `src/app.module.ts` - Root module importing all feature modules
+**文件:** `core/message-router.ts`
 
-## Error Handling
+- 注册消息处理器
+- 路由消息到对应处理器
+- 支持 requireAuth 配置 (是否需要登录)
+- 支持 rateLimit 配置 (速率限制)
+- 提供路由表打印 (调试用)
 
-**Strategy:** Global exception filters + per-message error handling in MessageRouter
+### 业务模块层 (Business Modules)
 
-**Patterns:**
-- `AllExceptionsFilter` - Catches unhandled exceptions
-- `HttpExceptionFilter` - Handles NestJS HTTP exceptions
-- Message handlers wrap errors and throw, caught by gateway layer
-- Error responses include `{code, seq, payload: null, error: {code, message}}`
+#### 认证模块 (Auth)
 
-**Error Codes:** Defined in `message-codes.ts` (ErrorCodes enum) with ranges for each category
+**位置:** `src/modules/auth/`
 
-## Cross-Cutting Concerns
+| 文件 | 职责 |
+|------|------|
+| `auth.service.ts` | 核心认证逻辑 |
+| `auth.controller.ts` | HTTP 认证接口 |
+| `auth.module.ts` | 全局认证模块配置 |
 
-**Logging:**
-- NestJS built-in logger with levels: error, warn, log, debug, verbose
-- Structured logging in gateways (connection/disconnection, message recv/send)
+**认证方式:**
+1. **微信登录** - 模拟微信 API 获取 openId
+2. **账号密码登录** - 用户名+密码 (bcrypt 加密)
+3. **Token 刷新** - Refresh Token 机制
 
-**Validation:**
-- Global ValidationPipe with whitelist, forbidNonWhitelisted, transform
+**JWT 配置:**
+- Access Token 过期: 2小时
+- Refresh Token 过期: 7天
+- Refresh Token 存储在 Redis 中用于撤销
 
-**Authentication:**
-- JWT via @nestjs/jwt
-- Token extracted from Socket.IO handshake (auth.token, query.token, or Authorization header)
-- AuthService manages token generation, verification, refresh, revocation
+**HTTP 接口:**
+```
+POST /api/auth/wechat-login      - 微信登录
+POST /api/auth/account-login     - 账号登录
+POST /api/auth/account-register  - 账号注册
+POST /api/auth/refresh-token     - 刷新 Token
+POST /api/auth/logout            - 登出
+```
 
-**Serialization:**
-- Protobuf for efficient WebSocket binary transfer
-- JSON fallback
-- MongoDB toJSON transform excludes _id, __v, passwordHash, passwordSalt
+#### 玩家模块 (Player)
+
+**位置:** `src/modules/player/`
+
+**服务:** `player/player.service.ts`
+
+**功能:**
+- 获取玩家资料 (带缓存)
+- 更新玩家状态
+- 获取战斗属性
+- 获取生产技能
+- 获取经脉槽位状态
+- 验证玩家存在性
+
+#### 战斗模块 (Battle)
+
+**位置:** `src/modules/battle/`
+
+**服务:** `battle/battle.service.ts`
+
+**功能:**
+- 流派切换 (剑修/法修/体修)
+- 获取流派属性加成
+- 创建/加入/离开队伍
+- 境界压制检测
+
+**战斗相关网关:**
+- `party.gateway.ts` - 队伍相关 WebSocket 处理
+
+#### 仙府模块 (Estate)
+
+**位置:** `src/modules/estate/`
+
+**服务:** `estate/estate.service.ts`
+
+**功能:**
+- 仙府数据管理 (14种建筑)
+- 建筑建造/升级
+- 偷取灵气 (带冷却和分布式锁)
+- 协助加速建造
+- 访客记录
+
+**相关网关:** `estate.gateway.ts`
+
+#### 坊市模块 (Market)
+
+**位置:** `src/modules/market/`
+
+**服务:** `market/market.service.ts`
+
+**功能:**
+- 物品上架 (18% 交易税)
+- 购买物品 (分布式锁保证并发安全)
+- 下架物品
+- 获取市场列表
+- 市场统计
+
+**拍卖服务:** `auction.service.ts`
+**风控服务:** `risk-control.service.ts`
+
+**相关网关:** `trade.gateway.ts`
+
+#### 离线模块 (Offline)
+
+**位置:** `src/modules/offline/`
+
+**功能:** 离线收益计算
+
+## 消息流 (Message Flow)
+
+### WebSocket 消息流程
+
+```
+客户端  ──────────────────────────────────────────────────────>  服务器
+
+1. 连接建立
+   客户端 ──(WebSocket 连接)──> MessageGateway.handleConnection()
+   客户端 <──(connected 事件)── 服务器
+
+2. 消息发送
+   客户端 ──(message 事件: {code, seq, payload})──> handleMessage()
+
+3. 消息路由
+   handleMessage()
+   ├── 解析消息 (Protobuf/JSON)
+   ├── 提取 Token 并验证
+   ├── MessageRouter.route(message)
+   │   └── 注册的 Handler 处理
+   └── client.emit('message', response)
+
+4. 服务器推送 (Push)
+   服务器 ──(push 事件)──> 客户端
+   ├── pushToPlayer(playerId, code, payload)  // 单人推送
+   ├── broadcast(code, payload)                // 广播
+   └── broadcastToRoom(roomId, code, payload) // 房间广播
+```
+
+### 认证流程
+
+```
+登录流程:
+
+1. 微信登录
+   客户端 ──(WECHAT_LOGIN_REQ)──> AuthService.wechatLogin()
+   ├── 模拟调用微信API获取 openId
+   ├── 查找或创建 Player 文档
+   ├── 生成 JWT Tokens (access + refresh)
+   ├── 存储 Refresh Token 到 Redis
+   └── 返回 tokens + playerData
+
+2. 账号登录
+   客户端 ──(ACCOUNT_LOGIN_REQ)──> AuthService.accountLogin()
+   ├── 根据 username 查找 Player
+   ├── 验证密码 (bcrypt.compare)
+   ├── 生成 JWT Tokens
+   └── 返回 tokens + playerData
+
+3. Token 刷新
+   客户端 ──(REFRESH_TOKEN_REQ)──> AuthService.refreshTokens()
+   ├── 验证 Refresh Token
+   ├── 检查 Redis 中的 Token 是否存在
+   ├── 生成新的 Access Token
+   └── 撤销旧 Refresh Token, 存储新的
+
+4. 登出
+   客户端 ──(LOGOUT_REQ)──> AuthService.logout()
+   ├── 删除 Redis 中的 Refresh Token
+   ├── 将 Token 加入黑名单
+   └── 更新 Player 状态为 offline
+```
+
+### 消息号协议
+
+**位置:** `src/shared/constants/message-codes.ts`
+
+**号段分配:**
+| 模块 | 号段 | 示例 |
+|------|------|------|
+| 系统 | 000000-000999 | 心跳、时间同步 |
+| 认证 | 001000-001999 | 登录、注册、Token刷新 |
+| 玩家 | 002000-002999 | 玩家数据、背包、装备 |
+| 战斗 | 003000-003999 | 战斗、队伍、副本 |
+| 经济 | 004000-004999 | 市场、拍卖、交易 |
+| 仙府 | 005000-005999 | 建筑、收获、拜访 |
+| 社交 | 006000-006999 | 好友、邮件、聊天 |
+| 服务器推送 | 900000-999999 | 属性变更、通知 |
+
+**请求/响应规则:**
+- 偶数为请求码
+- 奇数为响应码 (请求码 + 1)
+- 推送使用 900000 以上号段
+
+## Protobuf 协议
+
+**定义文件:** `shared/proto/game.proto`
+
+**主要消息:**
+```protobuf
+message GameRequest {
+  int32 seq = 1;
+  string route = 2;
+  bytes payload = 3;
+  int64 timestamp = 4;
+  string token = 5;
+}
+
+message GameResponse {
+  int32 seq = 1;
+  string route = 2;
+  bool success = 3;
+  bytes payload = 4;
+  ErrorInfo error = 5;
+  int64 timestamp = 6;
+  int32 processing_time = 7;
+}
+
+message WebSocketMessage {
+  string event = 1;
+  bytes payload = 2;
+  int64 timestamp = 3;
+  int32 seq = 4;
+  string target_player = 5;
+}
+```
+
+## 数据流管道
+
+### 玩家数据管道
+
+```
+客户端请求 ──> WebSocket Gateway ──> MessageRouter ──> Handler
+                                                    │
+                                                    ▼
+                                              PlayerService
+                                                    │
+                                        ┌───────────┴───────────┐
+                                        ▼                       ▼
+                                  Redis Cache            MongoDB
+                                  (5分钟TTL)              (持久化)
+                                        │                       │
+                                        └───────────┬───────────┘
+                                                    ▼
+                                              响应数据
+                                                    │
+                                                    ▼
+                                              推送更新 ──> 客户端
+```
+
+### 市场交易管道
+
+```
+上架物品:
+客户端 ──> MarketService.listItem() ──> Trade Schema ──> Redis ZSET (价格索引)
+
+购买物品:
+客户端 ──> MarketService.buyItem()
+         │
+         ├── 分布式锁 (Redis SETNX)
+         ├── 检查交易状态
+         ├── 更新 Trade (isCompleted=true)
+         ├── 扣款/发货
+         └── 释放锁
+```
+
+### 仙府建筑管道
+
+```
+开始建造:
+客户端 ──> EstateService.startBuilding()
+         │
+         ├── 分布式锁
+         ├── 更新 Estate Schema (isConstructing=true)
+         └── setTimeout (模拟定时任务)
+
+建造完成:
+         └── completeBuilding() ──> 更新 Schema (level++)
+```
+
+## 错误处理
+
+**错误码定义:** `src/shared/constants/message-codes.ts`
+
+| 类别 | 号段 |
+|------|------|
+| 系统错误 | 1000-1999 |
+| 认证错误 | 2000-2999 |
+| 玩家数据错误 | 3000-3999 |
+| 背包/物品错误 | 4000-4999 |
+| 货币错误 | 5000-5999 |
+| 战斗错误 | 6000-6999 |
+| 经济错误 | 7000-7999 |
+| 仙府错误 | 8000-8999 |
+| 社交错误 | 9000-9999 |
+
+**异常过滤器:** `src/common/filters/`
+- HttpExceptionFilter
+- AllExceptionsFilter
+
+## 通用组件
+
+**位置:** `src/common/`
+
+| 组件 | 目录 | 用途 |
+|------|------|------|
+| 控制器 | controllers/ | Health、Root 控制器 |
+| 装饰器 | decorators/ | CurrentUser, AllowAnonymous |
+| 过滤器 | filters/ | HTTP 异常、全局异常 |
+| 拦截器 | interceptors/ | Transform, Logging, Protobuf |
+| 守卫 | guards/ | JwtAuthGuard |
 
 ---
 
-*Architecture analysis: 2026/04/21*
+*架构分析: 2026/04/21*

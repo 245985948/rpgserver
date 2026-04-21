@@ -4,136 +4,132 @@
 
 ## APIs & External Services
 
-**WeChat Mini-Game Authentication:**
-- Purpose: Player login via WeChat mini-game platform
-- SDK/Client: Custom implementation (not a WeChat SDK package)
-- Auth method: OAuth code exchange (mock implementation at `src/modules/auth/auth.service.ts:441-444`)
-- Config env vars:
-  - `WECHAT_APP_ID` - WeChat app identifier
-  - `WECHAT_APP_SECRET` - WeChat app secret
+**WeChat Integration (Simulated):**
+- Purpose: WeChat login authentication
+- SDK/Client: Custom implementation (mock)
+- Auth: WeChat code-based authentication (simplified implementation)
+- Note: 当前为模拟实现，实际应调用微信API `https://api.weixin.qq.com/sns/jscode2session`
 
 ## Data Storage
 
 **MongoDB:**
-- Type: Document database (NoSQL)
+- Type: Document database (MongoDB)
 - ODM: Mongoose 9.2.2
-- NestJS integration: @nestjs/mongoose 11.0.4
-- Connection URI: `MONGODB_URI` env var (default: `mongodb://localhost:27017/taixu`)
-- Connection pool:
-  - `maxPoolSize: 50`
-  - `minPoolSize: 10`
-  - `serverSelectionTimeoutMS: 5000`
-  - `socketTimeoutMS: 45000`
-- Schemas location: `src/database/schemas/`
-  - `player.schema.ts` - Player entity
-  - `estate.schema.ts` - Estate/building entity
-  - `trade.schema.ts` - Trade/market entity
+- NestJS Integration: @nestjs/mongoose 11.0.4
+- Connection URI: `mongodb://localhost:27017/taixu` (configurable via MONGODB_URI)
+- Connection Pool:
+  - Max pool size: 50
+  - Min pool size: 10
+  - Server selection timeout: 5000ms
+  - Socket timeout: 45000ms
+
+**Collections/Schemas:**
+- `src/database/schemas/player.schema.ts` - Player data
+- `src/database/schemas/estate.schema.ts` - Estate/property data
+- `src/database/schemas/trade.schema.ts` - Trade transactions
+
+## Caching & Pub/Sub
 
 **Redis:**
-- Type: Key-value cache and session store
 - Client: ioredis 5.9.3
-- Connection: `REDIS_HOST`, `REDIS_PORT` env vars (default: localhost:6379)
-- Auth: `REDIS_PASSWORD` env var (optional)
-- Database index: `REDIS_DB` env var (default: 0)
-- Service location: `src/redis/redis.service.ts`
-- Capabilities used:
-  - String operations (session storage)
-  - Hash operations
-  - List operations
-  - Sorted sets (leaderboards)
-  - Distributed locks (acquireLock/releaseLock)
-  - Pub/sub (redis-pubsub.service.ts)
+- Default host: localhost
+- Default port: 6379
+- Default db: 0
+- Auth: Optional via REDIS_PASSWORD env var
+
+**Redis Usage Patterns:**
+- Session management (Refresh token storage)
+- Distributed locking (acquireLock, releaseLock)
+- Cache operations (set, get, del with TTL)
+- Hash operations (hset, hget, hgetall)
+- List operations (lpush, rpush, lpop, lrange)
+- Sorted sets (zadd, zrank, zscore, zrange) - 用于排行榜
+- Pub/Sub (publish/subscribe)
+
+**Key Cache Keys (from CACHE_KEYS):**
+- Session keys: `${CACHE_KEYS.SESSION}${playerId}:refresh`
+- Blacklist: `${CACHE_KEYS.SESSION}blacklist:${refreshToken}`
 
 ## Authentication & Identity
 
 **JWT Authentication:**
-- Provider: @nestjs/jwt with passport-jwt strategy
-- Token types:
-  - Access Token (2h expiry)
-  - Refresh Token (7d expiry)
-- Storage:
-  - Access token: Client-side (sent in Authorization header)
-  - Refresh token: Server-side (Redis storage for revocation)
-- Secret management: `JWT_SECRET`, `JWT_REFRESH_SECRET` env vars
-- Session key prefix: `SESSION` (see `CACHE_KEYS` in `src/shared/constants/`)
+- Provider: @nestjs/jwt with passport-jwt
+- Access Token Expiry: 2 hours
+- Refresh Token Expiry: 7 days
+- Token storage: In-memory (JWT) + Redis (Refresh tokens for revocation)
+
+**Password Security:**
+- Library: bcryptjs 3.0.3
+- Salt rounds: 10
 
 **Auth Methods:**
-1. WeChat login - via code (mocked)
-2. Account registration - username/password with bcrypt hashing
-3. Account login - username/password verification
-
-## Monitoring & Observability
-
-**Logging:**
-- Framework: NestJS built-in logger
-- Log levels: error, warn, log, debug, verbose (configurable via `LOG_LEVEL` env var)
-- Output: Console (stdout)
-- Interceptors: TransformInterceptor, LoggingInterceptor (`src/common/interceptors/`)
-
-**Error Handling:**
-- Global filters: HttpExceptionFilter, AllExceptionsFilter (`src/common/filters/`)
+- WeChat login (code-based, simulated)
+- Account registration (username/password)
+- Account login (username/password)
 
 ## WebSocket Communication
 
-**Socket.IO Integration:**
-- Adapter: @nestjs/platform-socket.io
-- Gateway: MessageGateway (`src/modules/gateway/message.gateway.ts`)
-- WebSocket endpoint: `ws://localhost:3000/game`
-- HTTP endpoint: `http://localhost:3000/api`
-- Health check: `http://localhost:3000/api/health`
-- CORS: Enabled with credentials support
-- Keep-Alive timeout: 65 seconds
-- Headers timeout: 66 seconds
+**WebSocket Framework:**
+- Socket.IO via @nestjs/platform-socket.io 11.1.14
 
-## Protocol Buffers
+**Protocol Support:**
+- JSON (default)
+- Protobuf (taixu.WebSocketMessage schema)
 
-**Serialization:**
-- Proto file: `shared/proto/game.proto`
-- Runtime: protobufjs 7.4.0
-- Module: ProtobufModule (`src/shared/protobuf/`)
-- Usage: Game request/response wrapping for WebSocket messages
+**Gateway Configuration (src/modules/gateway/message.gateway.ts):**
+- Namespace: `/`
+- CORS: Allow all origins
+- Transports: websocket, polling
+- allowEIO3: true (Socket.IO v3 compatibility)
 
-**Message Types Defined:**
-- GameRequest, GameResponse - Request/response wrapper
-- WebSocketMessage - WebSocket event wrapper
-- PlayerData, PlayerBasicInfo, PlayerCurrency, PlayerAttributes
-- Item, Equipment - Inventory system
-- BattleUnit, BattleAction, BattleState - Combat system
-- MarketListing, AuctionItem - Economy system
-- EstateBuilding, EstateData - Estate system
+**Message Routing:**
+- Code-based message routing via MessageRouter
+- Message codes defined in `src/shared/constants/message-codes.ts`
+- Categories: System, Auth, Player, Battle, Estate, Market
+
+## Event Bus & Message System
+
+**Internal Event Bus:**
+- CrossServiceEventBus (src/core/cross-service.event-bus.ts)
+- EventManager (src/core/event.manager.ts)
+- Used for inter-module communication
+
+## Serialization & Validation
+
+**Protocol Buffers:**
+- protobufjs 7.4.0
+- WebSocket message schema: taixu.WebSocketMessage
+- Service: ProtobufService (src/shared/protobuf/protobuf.service.ts)
+
+**DTO Validation:**
+- class-validator 0.15.1
+- class-transformer 0.5.1
+- Global ValidationPipe enabled with whitelist and transform
 
 ## Environment Configuration
 
-**Required env vars:**
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `PORT` | Server port | 3000 |
-| `NODE_ENV` | Environment | development |
-| `APP_VERSION` | App version | 1.0.0 |
-| `LOG_LEVEL` | Log verbosity | debug |
-| `MONGODB_URI` | MongoDB connection | mongodb://localhost:27017/taixu |
-| `REDIS_HOST` | Redis host | localhost |
-| `REDIS_PORT` | Redis port | 6379 |
-| `REDIS_PASSWORD` | Redis auth | (none) |
-| `REDIS_DB` | Redis database | 0 |
-| `JWT_SECRET` | JWT signing secret | (required in production) |
-| `JWT_REFRESH_SECRET` | Refresh token secret | (required in production) |
-| `WECHAT_APP_ID` | WeChat app ID | (required for WeChat auth) |
-| `WECHAT_APP_SECRET` | WeChat secret | (required for WeChat auth) |
+**Required Environment Variables:**
+- `MONGODB_URI` - MongoDB connection string (default: mongodb://localhost:27017/taixu)
+- `REDIS_HOST` - Redis server host (default: localhost)
+- `REDIS_PORT` - Redis server port (default: 6379)
+- `REDIS_PASSWORD` - Redis password (optional)
+- `REDIS_DB` - Redis database number (default: 0)
+- `JWT_SECRET` - JWT signing secret
+- `JWT_REFRESH_SECRET` - Refresh token secret (falls back to JWT_SECRET)
+- `port` - Application port (default: 3000)
+- `nodeEnv` - Environment (development/production)
+- `version` - Application version
 
-**Secrets location:**
-- `.env` file in project root (not committed to git per .gitignore)
+**Secrets Location:**
+- Environment files: `.env.local`, `.env`
+- No secret files committed to repository
 
-## Cross-Cutting Infrastructure
+## Application Ports
 
-**Config Module:**
-- NestJS ConfigModule with dotenv loading
-- Env file priority: `.env.local` > `.env`
-- Configuration files: `src/config/`
-  - `app.config.ts` - Application settings
-  - `database.config.ts` - MongoDB settings
-  - `redis.config.ts` - Redis connection
-  - `game.config.ts` - Game-specific settings
+**Default Configuration:**
+- HTTP API: `http://localhost:3000/api`
+- Health Check: `http://localhost:3000/api/health`
+- WebSocket: `ws://localhost:3000/game`
 
 ---
 
