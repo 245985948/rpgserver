@@ -95,14 +95,25 @@ class Currency {
   collection: 'players',
   toJSON: {
     virtuals: true,
-    transform: (doc, ret) => {
+    transform: (doc, ret: Record<string, unknown>) => {
       delete ret._id;
       delete ret.__v;
+      delete ret.passwordHash;
+      delete ret.passwordSalt;
       return ret;
     },
   },
 })
 export class Player {
+  @Prop({ type: String, unique: true, sparse: true, index: true })
+  username?: string;
+
+  @Prop({ type: String, select: false })
+  passwordHash?: string;
+
+  @Prop({ type: String, select: false })
+  passwordSalt?: string;
+
   @Prop({ type: String, required: true, unique: true, index: true })
   openId: string;
 

@@ -63,6 +63,14 @@ export const AuthCodes = {
   CHECK_AUTH_REQ: 1006,
   /** 登录状态检查响应 */
   CHECK_AUTH_RESP: 1007,
+  /** 账号注册请求 */
+  ACCOUNT_REGISTER_REQ: 1010,
+  /** 账号注册响应 */
+  ACCOUNT_REGISTER_RESP: 1011,
+  /** 账号登录请求 */
+  ACCOUNT_LOGIN_REQ: 1012,
+  /** 账号登录响应 */
+  ACCOUNT_LOGIN_RESP: 1013,
 } as const;
 
 // ============================================
@@ -293,6 +301,10 @@ export const SocialCodes = {
 // ============================================
 
 export const ServerPushCodes = {
+  /** 玩家数据同步推送 (登录后主动推送) */
+  PLAYER_DATA_SYNC: 900100,
+  /** 背包数据同步推送 */
+  INVENTORY_SYNC: 900101,
   /** 玩家属性变更推送 */
   PLAYER_ATTR_CHANGED: 900000,
   /** 货币变更推送 */

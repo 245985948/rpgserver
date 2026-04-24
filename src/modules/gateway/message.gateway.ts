@@ -15,10 +15,15 @@ import {
   OnGatewayInit,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Logger, Injectable, OnModuleInit } from '@nestjs/common';
+import { Logger, Injectable, OnModuleInit, Inject, forwardRef } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import { IAuthenticatedSocket } from '../../common/guards/jwt-auth.guard';
 import { MessageRouter, IGameMessage } from '../../core/message-router';
 import { ProtobufService } from '../../shared/protobuf/protobuf.service';
+import { AuthService } from '../auth/auth.service';
+import { Player, PlayerDocument } from '../../database/schemas/player.schema';
 import {
   getMessageName,
   getResponseCode,
@@ -77,6 +82,11 @@ export class MessageGateway
   constructor(
     private readonly messageRouter: MessageRouter,
     private readonly protobufService: ProtobufService,
+    private readonly jwtService: JwtService,
+    @InjectModel(Player.name)
+    private readonly playerModel: Model<PlayerDocument>,
+    @Inject(forwardRef(() => AuthService))
+    private readonly authService: AuthService,
   ) {}
 
   /**
@@ -104,13 +114,97 @@ export class MessageGateway
     this.messageRouter.register(
       AuthCodes.WECHAT_LOGIN_REQ,
       async (msg) => {
-        // 实际调用 AuthService
-        return { success: true, token: 'mock_token' };
+        const { code } = msg.payload as { code: string };
+        try {
+          const result = await this.authService.wechatLogin(code);
+          return {
+            success: true,
+            playerId: result.playerId,
+            tokens: result.tokens,
+            isNewPlayer: result.isNewPlayer,
+            playerData: result.playerData,
+            inventory: result.inventory,
+          };
+        } catch (error) {
+          throw error;
+        }
+      },
+      { requireAuth: false },
+    );
+
+    // 账号注册消息处理器
+    this.messageRouter.register(
+      AuthCodes.ACCOUNT_REGISTER_REQ,
+      async (msg) => {
+        const { username, password } = msg.payload as { username: string; password: string };
+        try {
+          const result = await this.authService.accountRegister(username, password);
+          return {
+            success: true,
+            playerId: result.playerId,
+            tokens: result.tokens,
+            isNewPlayer: result.isNewPlayer,
+            playerData: result.playerData,
+            inventory: result.inventory,
+          };
+        } catch (error) {
+          throw error;
+        }
+      },
+      { requireAuth: false },
+    );
+
+    // 账号登录消息处理器
+    this.messageRouter.register(
+      AuthCodes.ACCOUNT_LOGIN_REQ,
+      async (msg) => {
+        const { username, password } = msg.payload as { username: string; password: string };
+        try {
+          const result = await this.authService.accountLogin(username, password);
+          return {
+            success: true,
+            playerId: result.playerId,
+            tokens: result.tokens,
+            isNewPlayer: result.isNewPlayer,
+            playerData: result.playerData,
+            inventory: result.inventory,
+          };
+        } catch (error) {
+          throw error;
+        }
       },
       { requireAuth: false },
     );
 
     // ========== 玩家消息 ==========
+    this.messageRouter.register(PlayerCodes.GET_PLAYER_DATA_REQ, async (msg) => {
+      // 实际调用 PlayerService
+      return {
+        playerId: msg.playerId,
+        nickname: '测试玩家',
+        level: 50,
+      };
+    });
+
+    // 获取玩家背包
+    this.messageRouter.register(PlayerCodes.GET_INVENTORY_REQ, async (msg) => {
+      if (!msg.playerId) {
+        throw new Error('未登录');
+      }
+      const player = await this.playerModel.findById(msg.playerId);
+      if (!player) {
+        throw new Error('玩家不存在');
+      }
+      const inventory: Record<string, number> = {};
+      if (player.inventory) {
+        player.inventory.forEach((value, key) => {
+          inventory[key] = value;
+        });
+      }
+      return { inventory };
+    });
+
+    // 获取玩家数据
     this.messageRouter.register(PlayerCodes.GET_PLAYER_DATA_REQ, async (msg) => {
       // 实际调用 PlayerService
       return {
@@ -150,8 +244,24 @@ export class MessageGateway
    * 连接建立
    * 客户端连接 URL: ws://host/game?token=<jwt_token>
    */
-  handleConnection(client: IAuthenticatedSocket) {
-    const playerId = client.data?.playerId;
+  async handleConnection(client: IAuthenticatedSocket) {
+    // 尝试从 token 提取 playerId
+    const token = this.extractTokenFromSocket(client);
+    let playerId: string | undefined;
+
+    if (token) {
+      try {
+        const payload = await this.jwtService.verifyAsync(token);
+        if (payload.type === 'access' && payload.playerId) {
+          playerId = payload.playerId;
+          client.data.playerId = playerId;
+          client.data.openId = payload.openId;
+        }
+      } catch (error) {
+        this.logger.warn(`Token verification failed: ${error.message}`);
+      }
+    }
+
     const transport = client.conn?.transport?.name || 'unknown';
     const clientCount = (this.server?.sockets as any)?.size || 1;
 
@@ -208,6 +318,27 @@ export class MessageGateway
     @ConnectedSocket() client: IAuthenticatedSocket,
   ) {
     const startTime = Date.now();
+
+    // 如果还没有 playerId，尝试从 token 验证
+    if (!client.data?.playerId) {
+      const token = this.extractTokenFromSocket(client);
+      this.logger.debug(`[AUTH DEBUG] Extracted token: ${token ? 'yes' : 'no'}, auth: ${JSON.stringify(client.handshake.auth)}, query: ${JSON.stringify(client.handshake.query)}`);
+
+      if (token) {
+        try {
+          const payload = await this.jwtService.verifyAsync(token);
+          if (payload.type === 'access' && payload.playerId) {
+            client.data.playerId = payload.playerId;
+            client.data.openId = payload.openId;
+            this.playerSockets.set(payload.playerId, client.id);
+            this.logger.debug(`[AUTH] Player authenticated: ${payload.playerId}`);
+          }
+        } catch (error) {
+          this.logger.warn(`Token verification failed: ${error.message}`);
+        }
+      }
+    }
+
     const playerId = client.data?.playerId;
 
     // 解析消息（支持 protobuf 和 json）
@@ -495,5 +626,34 @@ export class MessageGateway
       `[ROOM BROADCAST] room=${roomId} | code=${code} (${getMessageName(code)}) | ` +
       `format=${useProtobuf ? 'protobuf' : 'json'} | payload=${JSON.stringify(payload)}`
     );
+  }
+
+  /**
+   * 从 WebSocket 连接中提取 Token
+   */
+  private extractTokenFromSocket(client: IAuthenticatedSocket): string | undefined {
+    // 方式1: 从 handshake.auth 获取 (Socket.IO 传递的 auth 对象)
+    // 可能是字符串或对象
+    const authToken = client.handshake.auth?.token;
+    if (authToken) {
+      return typeof authToken === 'string' ? authToken : authToken;
+    }
+
+    // 方式2: 从 handshake.query 获取 (ws://url?token=xxx)
+    const queryToken = client.handshake.query.token;
+    if (queryToken) {
+      return Array.isArray(queryToken) ? queryToken[0] : queryToken;
+    }
+
+    // 方式3: 从 handshake.headers.authorization 获取
+    const headerAuth = client.handshake.headers.authorization;
+    if (headerAuth) {
+      const [type, token] = headerAuth.split(' ');
+      if (type === 'Bearer' && token) {
+        return token;
+      }
+    }
+
+    return undefined;
   }
 }

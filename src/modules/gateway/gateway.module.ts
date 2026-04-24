@@ -9,11 +9,14 @@ import { MessageGateway } from './message.gateway';
 import { TestGateway } from './test.gateway';
 import { MessageRouter } from '../../core/message-router';
 import { ProtobufModule } from '../../shared/protobuf/protobuf.module';
+import { AuthModule } from '../auth/auth.module';
+import { DatabaseModule } from '../../database/database.module';
 
 @Module({
   imports: [
-    JwtModule, // 提供 JwtService 给 JwtAuthGuard
     ProtobufModule, // 提供 ProtobufService
+    AuthModule, // 提供 AuthService 和配置好的 JwtService
+    DatabaseModule, // 提供 Player Model
   ],
   providers: [MessageGateway, TestGateway, MessageRouter],
   exports: [MessageGateway, TestGateway, MessageRouter],

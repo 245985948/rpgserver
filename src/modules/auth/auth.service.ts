@@ -1,12 +1,13 @@
 /**
  * 认证服务
- * 处理微信登录验证和 JWT 令牌管理
+ * 处理微信登录、账号密码登录和 JWT 令牌管理
  */
 
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException, ConflictException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { JwtService } from '@nestjs/jwt';
+import * as bcrypt from 'bcryptjs';
 import { Player, PlayerDocument } from '../../database/schemas/player.schema';
 import { RedisService } from '../../redis/redis.service';
 import { now } from '../../shared/utils';
@@ -49,6 +50,70 @@ export interface ITokenResponse {
   tokenType: 'Bearer';
 }
 
+/**
+ * 玩家基础信息接口
+ */
+export interface IPlayerBasicInfo {
+  id: string;
+  nickname: string;
+  avatar: string;
+  level: number;
+  exp: number;
+  realm: string;
+  vipLevel: number;
+  fightingPower: number;
+}
+
+/**
+ * 玩家货币接口
+ */
+export interface IPlayerCurrency {
+  spiritStones: number;
+  contribution: number;
+  prestige: number;
+  immortalJade: number;
+}
+
+/**
+ * 玩家战斗属性接口
+ */
+export interface IPlayerAttributes {
+  hp: number;
+  maxHp: number;
+  mp: number;
+  maxMp: number;
+  attack: number;
+  defense: number;
+  speed: number;
+  critRate: number;
+  critDamage: number;
+  resistance: number;
+}
+
+/**
+ * 玩家完整数据接口
+ */
+export interface IPlayerData {
+  basic: IPlayerBasicInfo;
+  currency: IPlayerCurrency;
+  attributes: IPlayerAttributes;
+  skills: string[];
+  equipments: unknown[];
+  items: unknown[];
+  lastUpdate: number;
+}
+
+/**
+ * 登录响应接口
+ */
+export interface ILoginResponse {
+  playerId: string;
+  tokens: ITokenResponse;
+  isNewPlayer: boolean;
+  playerData: IPlayerData;
+  inventory: Record<string, number>;
+}
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -68,11 +133,7 @@ export class AuthService {
     code: string,
     encryptedData?: string,
     iv?: string,
-  ): Promise<{
-    playerId: string;
-    tokens: ITokenResponse;
-    isNewPlayer: boolean;
-  }> {
+  ): Promise<ILoginResponse> {
     // 模拟调用微信API获取openId
     // 实际应调用 https://api.weixin.qq.com/sns/jscode2session
     const openId = this.mockGetOpenId(code);
@@ -109,10 +170,129 @@ export class AuthService {
 
     this.logger.debug(`Player ${playerId} logged in with JWT`);
 
+    // 构建玩家数据和背包
+    const playerData = this.buildPlayerData(player);
+    const inventory = this.getInventory(player);
+
     return {
       playerId,
       tokens,
       isNewPlayer,
+      playerData,
+      inventory,
+    };
+  }
+
+  /**
+   * 账号注册
+   * 使用用户名和密码创建新账号
+   */
+  async accountRegister(
+    username: string,
+    password: string,
+  ): Promise<ILoginResponse> {
+    // 验证用户名格式
+    if (!username || username.length < 3 || username.length > 20) {
+      throw new ConflictException('用户名长度必须在3-20个字符之间');
+    }
+
+    // 验证密码格式
+    if (!password || password.length < 6 || password.length > 32) {
+      throw new ConflictException('密码长度必须在6-32个字符之间');
+    }
+
+    // 检查用户名是否已存在
+    const existingPlayer = await this.playerModel.findOne({ username }).select('+passwordHash');
+    if (existingPlayer) {
+      throw new ConflictException('用户名已存在');
+    }
+
+    // 生成密码盐并加密密码
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash(password, salt);
+
+    // 创建新玩家
+    const player = await this.playerModel.create({
+      username,
+      passwordHash,
+      passwordSalt: salt,
+      openId: `account_${username}_${Date.now()}`,
+      nickname: `道友_${username.substring(0, 6)}`,
+      status: 'online',
+      lastLoginAt: new Date(),
+    });
+
+    this.logger.log(`New account registered: ${player._id}, username: ${username}`);
+
+    const playerId = player._id.toString();
+
+    // 生成 JWT Tokens
+    const tokens = await this.generateTokens(playerId, player.openId);
+
+    // 存储 Refresh Token 到 Redis
+    await this.storeRefreshToken(playerId, tokens.refreshToken);
+
+    // 构建玩家数据和背包
+    const playerData = this.buildPlayerData(player);
+    const inventory = this.getInventory(player);
+
+    return {
+      playerId,
+      tokens,
+      isNewPlayer: true,
+      playerData,
+      inventory,
+    };
+  }
+
+  /**
+   * 账号密码登录
+   * 使用用户名和密码登录
+   */
+  async accountLogin(
+    username: string,
+    password: string,
+  ): Promise<ILoginResponse> {
+    // 查找玩家（包含密码字段）
+    const player = await this.playerModel
+      .findOne({ username })
+      .select('+passwordHash +passwordSalt');
+
+    if (!player) {
+      throw new UnauthorizedException('用户名或密码错误');
+    }
+
+    // 验证密码
+    const isPasswordValid = await bcrypt.compare(password, player.passwordHash);
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('用户名或密码错误');
+    }
+
+    // 更新登录状态
+    player.status = 'online' as any;
+    player.lastLoginAt = new Date();
+    await player.save();
+
+    const playerId = player._id.toString();
+
+    // 生成 JWT Tokens
+    const tokens = await this.generateTokens(playerId, player.openId);
+
+    // 存储 Refresh Token 到 Redis
+    await this.storeRefreshToken(playerId, tokens.refreshToken);
+
+    this.logger.debug(`Player ${playerId} logged in with account: ${username}`);
+
+    // 构建玩家数据和背包
+    const playerData = this.buildPlayerData(player);
+    const inventory = this.getInventory(player);
+
+    return {
+      playerId,
+      tokens,
+      isNewPlayer: false,
+      playerData,
+      inventory,
     };
   }
 
@@ -261,6 +441,84 @@ export class AuthService {
   private mockGetOpenId(code: string): string {
     // 简化实现,实际应调用微信服务器
     return `openid_${code.substring(0, 16)}`;
+  }
+
+  /**
+   * 根据玩家文档构建玩家数据
+   */
+  private buildPlayerData(player: PlayerDocument): IPlayerData {
+    // 计算战力（简单累加战斗属性）
+    const combatAttrs = player.combatAttributes || {};
+    const combatValues = Object.values(combatAttrs as Record<string, number>);
+    const fightingPower = combatValues.reduce((sum, val) => sum + (val || 0), 0) * 10;
+
+    // 获取货币
+    const currencies = player.currencies || [];
+    const currencyMap: Record<string, number> = {};
+    currencies.forEach((c: { type: string; amount: number }) => {
+      currencyMap[c.type] = c.amount;
+    });
+
+    return {
+      basic: {
+        id: player._id.toString(),
+        nickname: player.nickname,
+        avatar: player.avatarUrl || '',
+        level: combatAttrs['realm'] || 1,
+        exp: 0,
+        realm: player.realm || 'QI_REFINING',
+        vipLevel: 0,
+        fightingPower,
+      },
+      currency: {
+        spiritStones: currencyMap['spirit_stones'] || 0,
+        contribution: currencyMap['contribution'] || 0,
+        prestige: currencyMap['prestige'] || 0,
+        immortalJade: currencyMap['immortal_jade'] || 0,
+      },
+      attributes: {
+        hp: 100,
+        maxHp: 100,
+        mp: 50,
+        maxMp: 50,
+        attack: combatAttrs['attack'] || 10,
+        defense: combatAttrs['defense'] || 10,
+        speed: combatAttrs['speed'] || 10,
+        critRate: 5,
+        critDamage: 150,
+        resistance: 0,
+      },
+      skills: [],
+      equipments: player.equipments || [],
+      items: this.buildInventoryItems(player),
+      lastUpdate: Date.now(),
+    };
+  }
+
+  /**
+   * 获取玩家的背包数据
+   */
+  private getInventory(player: PlayerDocument): Record<string, number> {
+    const inventoryMap: Record<string, number> = {};
+    if (player.inventory && player.inventory instanceof Map) {
+      player.inventory.forEach((value, key) => {
+        inventoryMap[key] = value;
+      });
+    }
+    return inventoryMap;
+  }
+
+  /**
+   * 构建背包物品列表（用于 playerData.items）
+   */
+  private buildInventoryItems(player: PlayerDocument): Array<{ itemId: string; quantity: number }> {
+    const items: Array<{ itemId: string; quantity: number }> = [];
+    if (player.inventory && player.inventory instanceof Map) {
+      player.inventory.forEach((quantity, itemId) => {
+        items.push({ itemId, quantity });
+      });
+    }
+    return items;
   }
 
   // ============================================

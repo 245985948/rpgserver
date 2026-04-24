@@ -83,5 +83,4 @@ export class Estate {
 export const EstateSchema = SchemaFactory.createForClass(Estate);
 
 // 索引
-EstateSchema.index({ playerId: 1 });
 EstateSchema.index({ 'visitorLogs.visitTime': -1 });

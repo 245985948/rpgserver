@@ -13,7 +13,9 @@
       "Bash(curl:*)",
       "Bash(git init:*)",
       "Bash(git remote:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(wsl git:*)"
     ]
   },
   "model": "kimi2.5"

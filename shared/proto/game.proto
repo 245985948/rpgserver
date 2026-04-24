@@ -282,3 +282,52 @@ message LoginResponse {
   bool is_new_player = 5;
   PlayerData player_data = 6;
 }
+
+// 账号注册请求
+message AccountRegisterRequest {
+  string username = 1;             // 用户名
+  string password = 2;             // 密码
+}
+
+// 账号注册响应
+message AccountRegisterResponse {
+  string player_id = 1;
+  string access_token = 2;
+  string refresh_token = 3;
+  int32 expires_in = 4;
+  bool is_new_player = 5;
+  PlayerData player_data = 6;
+  map<string, int32> inventory = 7;  // 背包物品 map<itemId, quantity>
+}
+
+// 账号登录请求
+message AccountLoginRequest {
+  string username = 1;             // 用户名
+  string password = 2;             // 密码
+}
+
+// 账号登录响应
+message AccountLoginResponse {
+  string player_id = 1;
+  string access_token = 2;
+  string refresh_token = 3;
+  int32 expires_in = 4;
+  bool is_new_player = 5;
+  PlayerData player_data = 6;
+  map<string, int32> inventory = 7;  // 背包物品 map<itemId, quantity>
+}
+
+// 玩家数据同步响应 (服务器主动推送)
+message PlayerDataSyncPush {
+  string player_id = 1;
+  PlayerData player_data = 2;
+  map<string, int32> inventory = 3;  // 背包物品
+  int64 server_time = 4;
+}
+
+// 背包数据同步响应 (服务器主动推送)
+message InventorySyncPush {
+  string player_id = 1;
+  map<string, int32> inventory = 2;  // 背包物品
+  int64 server_time = 3;
+}

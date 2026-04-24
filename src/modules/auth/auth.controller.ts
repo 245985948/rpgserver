@@ -4,7 +4,7 @@
  */
 
 import { Controller, Post, Body, Get, Headers, UseGuards } from '@nestjs/common';
-import { AuthService, ITokenResponse } from './auth.service';
+import { AuthService, ILoginResponse, ITokenResponse } from './auth.service';
 import { JwtAuthGuard } from '../../common/guards';
 import { AllowAnonymous } from '../../common/decorators/allow-anonymous.decorator';
 import { CurrentPlayerId } from '../../common/decorators/current-user.decorator';
@@ -21,12 +21,32 @@ export class AuthController {
   @AllowAnonymous()
   async wechatLogin(
     @Body() dto: { code: string; encryptedData?: string; iv?: string },
-  ): Promise<{
-    playerId: string;
-    tokens: ITokenResponse;
-    isNewPlayer: boolean;
-  }> {
+  ): Promise<ILoginResponse> {
     return this.authService.wechatLogin(dto.code, dto.encryptedData, dto.iv);
+  }
+
+  /**
+   * 账号注册
+   * 使用用户名和密码创建新账号
+   */
+  @Post('account-register')
+  @AllowAnonymous()
+  async accountRegister(
+    @Body() dto: { username: string; password: string },
+  ): Promise<ILoginResponse> {
+    return this.authService.accountRegister(dto.username, dto.password);
+  }
+
+  /**
+   * 账号密码登录
+   * 使用用户名和密码登录
+   */
+  @Post('account-login')
+  @AllowAnonymous()
+  async accountLogin(
+    @Body() dto: { username: string; password: string },
+  ): Promise<ILoginResponse> {
+    return this.authService.accountLogin(dto.username, dto.password);
   }
 
   /**
